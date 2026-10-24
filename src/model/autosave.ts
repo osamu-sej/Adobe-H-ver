@@ -1,7 +1,7 @@
 import { commit, toast, useStore } from "./store";
 import { textUnder } from "./text";
 import { getText } from "./texts";
-import type { DocEntry, DocLayout, Mask } from "./types";
+import type { DocEntry, DocLayout, Level, Mask, MaskStyle } from "./types";
 
 /**
  * 作業の自動保存。保存するのはマスクの位置・ページ構成だけで、PDF本体や隠した文字は保存しない。
@@ -11,12 +11,33 @@ import type { DocEntry, DocLayout, Mask } from "./types";
 const PREFIX = "kakusu:v1:";
 const MAX_ENTRIES = 60;
 
+type SavedMask = Omit<Mask, "docId" | "text">;
+
 interface Saved {
+  /** 保存形式。2：塗りつぶしの色・透明度と、弱めた程度。なし：黒塗り・白塗りと、1段階ずつ強かった程度 */
+  v?: number;
   name: string;
   savedAt: number;
   order: number[];
   rot: DocLayout["rot"];
-  masks: Omit<Mask, "docId" | "text">[];
+  masks: SavedMask[];
+}
+
+const VERSION = 2;
+
+/** 古い形式で保存したマスクを今の形式に直す（見た目がなるべく変わらないように） */
+function migrate(raw: SavedMask, v: number): SavedMask {
+  const m = raw as Omit<SavedMask, "style" | "level" | "color" | "opacity"> & {
+    style: string;
+    level?: Level;
+    color?: string;
+    opacity?: number;
+  };
+  const style: MaskStyle = m.style === "black" || m.style === "white" ? "fill" : (m.style as MaskStyle);
+  const color = m.color ?? (m.style === "white" ? "#ffffff" : "#000000");
+  // v1 の弱・中は、今の中・強と同じ強さ。v1 の強（今はない）は今の強に寄せる
+  const level: Level = v >= 2 ? (m.level ?? "strong") : m.level === "weak" ? "medium" : "strong";
+  return { ...m, style, level, color, opacity: m.opacity ?? 1 };
 }
 
 function storage(): Storage | null {
@@ -52,6 +73,7 @@ function saveAll() {
         continue;
       }
       const data: Saved = {
+        v: VERSION,
         name: doc.name,
         savedAt: Date.now(),
         order: layout.order,
@@ -124,7 +146,7 @@ export function checkRestore(doc: DocEntry) {
           .filter((m) => m.page < doc.pages.length)
           .map((m) => {
             const idx = getText(doc.id, m.page);
-            return { ...m, level: m.level ?? "strong", docId: doc.id, text: idx ? textUnder(idx, m) || undefined : undefined };
+            return { ...migrate(m, data.v ?? 1), docId: doc.id, text: idx ? textUnder(idx, m) || undefined : undefined };
           });
         commit((s) => ({
           layouts: { ...s.layouts, [doc.id]: { order: valid.length ? valid : s.layouts[doc.id].order, rot: data.rot ?? {} } },

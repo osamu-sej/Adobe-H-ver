@@ -39,15 +39,10 @@ export const IconBlur = (p: P) => (
   </Svg>
 );
 
-export const IconBlack = (p: P) => (
-  <Svg {...p}>
-    <rect x="3" y="7" width="18" height="10" rx="1.5" fill="currentColor" />
-  </Svg>
-);
-
-export const IconWhite = (p: P) => (
+export const IconFill = (p: P) => (
   <Svg {...p}>
     <rect x="3" y="7" width="18" height="10" rx="1.5" />
+    <path d="M3 15.5V8.5A1.5 1.5 0 0 1 4.5 7H14v10H4.5A1.5 1.5 0 0 1 3 15.5z" fill="currentColor" stroke="none" />
   </Svg>
 );
 

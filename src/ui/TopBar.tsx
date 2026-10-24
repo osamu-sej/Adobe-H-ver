@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { redo, toast, undo, updateMasks, useStore } from "../model/store";
 import {
   LEVEL_HINT,
@@ -34,6 +35,7 @@ import {
   IconUndo,
   IconX,
 } from "./icons";
+import { colorName, FillPopover, FillSwatch } from "./FillPicker";
 import { STYLE_ICON } from "./SelectionToolbar";
 import { viewerApi } from "./Viewer";
 
@@ -112,7 +114,20 @@ export function TopBar({ onOpen }: { onOpen: () => void }) {
   });
   const shownStyle = selStyles && selStyles !== "mixed" ? selStyles : style;
   const shownLevel = selLevel ?? (strength !== null ? "custom" : level);
-  const levelOff = selLevel === null && (shownStyle === "black" || shownStyle === "white");
+  const fillColor = useStore((s) => s.fillColor);
+  const fillOpacity = useStore((s) => s.fillOpacity);
+  const selFill = useStore(
+    useShallow((s) => {
+      const sel = s.masks.filter((m) => m.style === "fill" && s.selection.includes(m.id));
+      if (!sel.length) return null;
+      const same = <T,>(vals: T[]) => (vals.every((v) => v === vals[0]) ? vals[0] : undefined);
+      return { color: same(sel.map((m) => m.color)), opacity: same(sel.map((m) => m.opacity)) };
+    }),
+  );
+  const shownFill = selFill ?? { color: fillColor, opacity: fillOpacity };
+  const showFill = selLevel === null && shownStyle === "fill";
+  const [fillOpen, setFillOpen] = useState(false);
+  const closeFill = useCallback(() => setFillOpen(false), []);
 
   return (
     <header className="topbar">
@@ -174,26 +189,48 @@ export function TopBar({ onOpen }: { onOpen: () => void }) {
           })}
         </div>
 
-        <div
-          className={"seg levels" + (levelOff ? " off" : "")}
-          role="radiogroup"
-          aria-label="モザイク・ぼかしの程度"
-          title={levelOff ? "黒塗り・白塗りには程度はありません" : undefined}
-        >
-          <span className="seg-label">程度</span>
-          {LEVEL_ORDER.map((l) => (
-            <button
-              key={l}
-              role="radio"
-              aria-checked={shownLevel === l}
-              className={"tb-btn" + (shownLevel === l ? " active" : "")}
-              title={`${LEVEL_LABEL[l]}：${LEVEL_HINT[l]}（[ と ] で切替）${selLevel ? "：選択中のマスクにも適用" : ""}`}
-              onClick={() => setLevel(l)}
-            >
-              {LEVEL_LABEL[l]}
-            </button>
-          ))}
-        </div>
+        {showFill ? (
+          <div className="seg fills">
+            <span className="seg-label">色</span>
+            <div className="pop-anchor">
+              <button
+                className={"tb-btn wide" + (fillOpen ? " active" : "")}
+                title={`塗りの色と透明度${selFill ? "：選択中のマスクにも適用" : ""}`}
+                aria-expanded={fillOpen}
+                onClick={() => setFillOpen(!fillOpen)}
+              >
+                {shownFill.color === undefined ? (
+                  <span className="fill-swatch mixed" aria-hidden="true" />
+                ) : (
+                  <FillSwatch color={shownFill.color} opacity={shownFill.opacity ?? 1} />
+                )}
+                <span className="fill-name">
+                  {shownFill.color === undefined ? "混在" : colorName(shownFill.color)}
+                  {shownFill.opacity !== undefined && shownFill.opacity < 1 && (
+                    <span className="muted"> 透明度{Math.round((1 - shownFill.opacity) * 100)}%</span>
+                  )}
+                </span>
+              </button>
+              {fillOpen && <FillPopover color={shownFill.color} opacity={shownFill.opacity} onClose={closeFill} />}
+            </div>
+          </div>
+        ) : (
+          <div className="seg levels" role="radiogroup" aria-label="モザイク・ぼかしの程度">
+            <span className="seg-label">程度</span>
+            {LEVEL_ORDER.map((l) => (
+              <button
+                key={l}
+                role="radio"
+                aria-checked={shownLevel === l}
+                className={"tb-btn" + (shownLevel === l ? " active" : "")}
+                title={`${LEVEL_LABEL[l]}：${LEVEL_HINT[l]}（[ と ] で切替）${selLevel ? "：選択中のマスクにも適用" : ""}`}
+                onClick={() => setLevel(l)}
+              >
+                {LEVEL_LABEL[l]}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="seg" role="radiogroup" aria-label="吸着">
           {SNAPS.map((s) => (

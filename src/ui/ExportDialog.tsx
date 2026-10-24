@@ -138,6 +138,8 @@ function ExportDialogInner() {
               h: m.h,
               style: m.style,
               strength: resolveStrength(m),
+              color: m.color,
+              opacity: m.opacity,
               label: m.label,
               text: m.text,
             })),
