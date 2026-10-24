@@ -1,10 +1,11 @@
 import { blurMargin, drawLabel, renderPatch, resolveStrength, type PixelSource } from "../fx/effects";
 import { clampRect } from "../model/geometry";
-import type { MaskStyle, Rect, Rot } from "../model/types";
+import type { Level, MaskStyle, Rect, Rot } from "../model/types";
 import type { PageBitmap } from "./bitmaps";
 
 export interface PaintMask extends Rect {
   style: MaskStyle;
+  level: Level;
   strength: number | null;
   label: string | null;
 }

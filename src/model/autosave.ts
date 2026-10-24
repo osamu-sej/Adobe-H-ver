@@ -124,7 +124,7 @@ export function checkRestore(doc: DocEntry) {
           .filter((m) => m.page < doc.pages.length)
           .map((m) => {
             const idx = getText(doc.id, m.page);
-            return { ...m, docId: doc.id, text: idx ? textUnder(idx, m) || undefined : undefined };
+            return { ...m, level: m.level ?? "strong", docId: doc.id, text: idx ? textUnder(idx, m) || undefined : undefined };
           });
         commit((s) => ({
           layouts: { ...s.layouts, [doc.id]: { order: valid.length ? valid : s.layouts[doc.id].order, rot: data.rot ?? {} } },

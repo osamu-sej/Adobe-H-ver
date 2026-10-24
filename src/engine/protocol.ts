@@ -62,6 +62,11 @@ export interface ExportOptions {
   mergedName: string;
   /** 全ページを画像化する（最も安全・文字は検索できなくなる） */
   rasterize: boolean;
+  /**
+   * 見た目だけ重ねる：モザイク等を上に重ねるだけで、下にある元の文字・画像は消さない。
+   * コピーや検索で元の内容が読めてしまうので、見た目を和らげれば十分なとき用
+   */
+  keepText: boolean;
   rasterDpi: number;
   /** 注釈・フォームを平坦化してから墨消しする */
   flatten: boolean;
@@ -103,6 +108,8 @@ export interface VerifyReport {
   encrypted: string;
   /** 隠した値と同じ文字列がマスクの外に残っている箇所 */
   residues: Residue[];
+  /** 「見た目だけ重ねる」で書き出したので、マスクの下の文字は意図して残している */
+  textKept: boolean;
   passed: boolean;
 }
 

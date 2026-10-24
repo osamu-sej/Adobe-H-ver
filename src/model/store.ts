@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { DocEntry, DocLayout, Mask, MaskStyle, Rect, Rot, SnapMode, Tool } from "./types";
+import type { DocEntry, DocLayout, Level, Mask, MaskStyle, Rect, Rot, SnapMode, Tool } from "./types";
 import { addRot } from "./geometry";
 
 export interface Snapshot {
@@ -53,6 +53,7 @@ interface AppState extends Snapshot {
   tool: Tool;
   style: MaskStyle;
   snap: SnapMode;
+  level: Level;
   strength: number | null;
   label: string | null;
   selection: string[];
@@ -101,6 +102,7 @@ export const useStore = create<AppState>(() => ({
   tool: "mask",
   style: "mosaic",
   snap: "digits",
+  level: "strong",
   strength: null,
   label: null,
   selection: [],

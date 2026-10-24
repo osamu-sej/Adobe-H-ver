@@ -1,4 +1,4 @@
-import type { MaskStyle, Rect } from "../model/types";
+import type { Level, MaskStyle, Rect } from "../model/types";
 
 /**
  * 画面プレビューと書き出しで共通に使うマスク描画処理。
@@ -24,26 +24,33 @@ export interface Patch {
   height: number;
 }
 
-/** 強さの下限（pt）。モザイクのブロックが小さすぎると数字が読めてしまうため */
-export const MIN_STRENGTH = 2.5;
+/** 強さ（pt）の範囲。「弱」では数字がうっすら判別できる細かさまで下げられる */
+export const MIN_STRENGTH = 0.8;
 export const MAX_STRENGTH = 48;
 
-/**
- * 自動の強さ：短辺の45%（1行の文字なら文字高の約半分）を基準に、3.5〜24ptに収める。
- * 仕様の「ブロックは文字高の半分以上」を満たす。
- */
-export function autoStrength(r: { w: number; h: number }): number {
-  const base = Math.min(r.w, r.h) * 0.45;
-  return Math.max(3.5, Math.min(24, base));
+/** 程度ごとの強さ：文字の高さ（マスクの短辺）に対する割合と下限（pt） */
+const LEVELS: Record<Level, { factor: number; floor: number }> = {
+  weak: { factor: 0.2, floor: MIN_STRENGTH },
+  medium: { factor: 0.32, floor: 2 },
+  // 「強」は仕様の「ブロックは文字高の半分以上」を満たす
+  strong: { factor: 0.5, floor: 3.5 },
+};
+
+/** 程度から決まる強さ。短辺（1行の文字なら文字高）を基準にし、大きな範囲でも24ptまでに収める */
+export function autoStrength(r: { w: number; h: number }, level: Level = "strong"): number {
+  const { factor, floor } = LEVELS[level];
+  const base = Math.min(r.w, r.h, 48);
+  return Math.max(floor, Math.min(24, base * factor));
 }
 
-export function resolveStrength(m: { w: number; h: number; strength: number | null }): number {
-  return Math.max(MIN_STRENGTH, m.strength ?? autoStrength(m));
+export function resolveStrength(m: { w: number; h: number; strength: number | null; level?: Level }): number {
+  const v = m.strength ?? autoStrength(m, m.level ?? "strong");
+  return Math.max(MIN_STRENGTH, Math.min(MAX_STRENGTH, v));
 }
 
-/** ぼかしの標準偏差（pt）。強さの0.6倍、最低2.5pt */
+/** ぼかしの標準偏差（pt）。強さの0.6倍 */
 export function blurSigma(strength: number): number {
-  return Math.max(2.5, strength * 0.6);
+  return Math.max(0.4, strength * 0.6);
 }
 
 /** ぼかしで周囲を参照する余白（pt） */
