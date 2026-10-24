@@ -73,6 +73,39 @@ describe("ドラッグ範囲への吸着", () => {
   });
 });
 
+describe("文字モードは数字を隠さない・数字モードは文字を隠さない", () => {
+  const idx = buildIndex(
+    fakePage(["担当：山田 太郎（携帯 090-1234-5678）", "2026年10月24日", "金額 ¥1,234,567", "INV-2026-001234 E10231"]),
+  );
+  const line = (n: number) => ({ x: 0, y: n * 16, w: 6 * 40, h: 14 });
+  const texts = (n: number, mode: "digits" | "text") => snapToRange(idx, line(n), mode).map((s) => s.text);
+  it("文字モード：数字の前後の文字だけを覆い、電話番号は残す", () => {
+    expect(texts(0, "text")).toEqual(["担当:山田太郎(携帯", ")"]);
+  });
+  it("文字モード：日付は年・月・日だけ", () => {
+    expect(texts(1, "text")).toEqual(["年", "月", "日"]);
+  });
+  it("数字モード：日付は数字だけ（年・月・日は残す）", () => {
+    expect(texts(1, "digits")).toEqual(["2026", "10", "24"]);
+  });
+  it("通貨記号はどちらのモードでも隠さない", () => {
+    expect(texts(2, "text")).toEqual(["金額"]);
+    expect(texts(2, "digits")).toEqual(["1,234,567"]);
+  });
+  it("英数字が混ざる番号は、文字モードでは英字だけ", () => {
+    expect(texts(3, "text")).toEqual(["INV-", "E"]);
+  });
+  it("文字モードで数字をクリックしても何も選ばない", () => {
+    const start = idx.lineRanges[0][0];
+    expect(wordAt(idx, start + 13)).toBeNull();
+  });
+  it("文字モードで英字をクリックすると、端の記号を除いた英字だけ", () => {
+    const start = idx.lineRanges[3][0];
+    const w = wordAt(idx, start + 1)!;
+    expect(idx.norm.slice(w[0], w[1]).join("")).toBe("INV");
+  });
+});
+
 describe("検索プリセット", () => {
   it("電話番号", () => {
     expect(hits("phone", ["TEL 03-1234-5678 携帯 090-1234-5678", "(03)1234-5678 と 09012345678", "郵便 100-0001 日付 2026-10-24"])).toEqual([

@@ -16,10 +16,18 @@ export interface TextIndex {
   map: Int32Array;
   /** 行ごとの文字範囲 [start, end) */
   lineRanges: [number, number][];
+  /** 各文字の種類（CharKind）。数字モード・文字モードで隠す対象を分ける */
+  kind: Uint8Array;
 }
+
+/** 文字の種類：空白／数字（数字のかたまりの区切り記号を含む）／数字の前の通貨記号／それ以外の文字 */
+export const CharKind = { Space: 0, Number: 1, Currency: 2, Text: 3 } as const;
 
 /** 数字と数字の間にあるときだけ、ひとかたまりとして扱う記号 */
 const CONNECTORS = new Set([",", ".", "/", ":", "'", "・", ...DASH_CHARS]);
+
+/** 数字の直前にあれば数字の一部とみなす通貨記号（どちらのモードでも隠さない） */
+const CURRENCY = new Set(["¥", "$", "€", "£"]);
 
 export function buildIndex(text: PageText): TextIndex {
   const n = text.chars.length;
@@ -40,7 +48,26 @@ export function buildIndex(text: PageText): TextIndex {
     for (let k = 0; k < s.length; k++) map.push(i);
   }
   if (n > 0) lineRanges.push([start, n]);
-  return { text, norm, full, map: new Int32Array(map), lineRanges };
+  const idx: TextIndex = { text, norm, full, map: new Int32Array(map), lineRanges, kind: new Uint8Array(n) };
+  classify(idx);
+  return idx;
+}
+
+function classify(idx: TextIndex) {
+  const { norm, kind } = idx;
+  const n = norm.length;
+  for (let i = 0; i < n; i++) kind[i] = isSpace(norm[i]) ? CharKind.Space : CharKind.Text;
+  for (let i = 0; i < n; i++) {
+    if (kind[i] === CharKind.Number || !isDigitChar(idx, i)) continue;
+    const g = numberGroupAt(idx, i);
+    if (!g) continue;
+    for (let k = g[0]; k < g[1]; k++) if (kind[k] !== CharKind.Space) kind[k] = CharKind.Number;
+  }
+  for (let i = 0; i < n; i++) {
+    if (!CURRENCY.has(norm[i])) continue;
+    const next = i + 1 < n && kind[i + 1] === CharKind.Space ? i + 2 : i + 1;
+    if (next < n && kind[next] === CharKind.Number && idx.text.lines[next] === idx.text.lines[i]) kind[i] = CharKind.Currency;
+  }
 }
 
 export function charRect(t: PageText, i: number): Rect {
@@ -134,19 +161,23 @@ function charClass(s: string): CharClass {
   return "other";
 }
 
-/** 文字モードでクリックしたときの単語（同じ字種の連なり。英数字はまとめる） */
+/** 英単語の端に付いた記号（「INV-」の「-」など）は単語に含めない */
+const WORD_EDGE = /[\-._+@:/]/;
+
+/** 文字モードでクリックしたときの単語（同じ字種の連なり。数字は含めない） */
 export function wordAt(idx: TextIndex, i: number): [number, number] | null {
-  if (i < 0 || isSpace(idx.norm[i])) return null;
+  if (i < 0 || idx.kind[i] !== CharKind.Text) return null;
   const [ls, le] = lineOf(idx, i);
-  const group = (s: string): string => {
-    const c = charClass(s);
-    return c === "digit" || c === "latin" ? "alnum" : c;
-  };
-  const g = group(idx.norm[i]);
+  const g = charClass(idx.norm[i]);
+  const same = (k: number) => idx.kind[k] === CharKind.Text && charClass(idx.norm[k]) === g;
   let s = i;
-  while (s - 1 >= ls && !isSpace(idx.norm[s - 1]) && group(idx.norm[s - 1]) === g) s--;
+  while (s - 1 >= ls && same(s - 1)) s--;
   let e = i;
-  while (e + 1 < le && !isSpace(idx.norm[e + 1]) && group(idx.norm[e + 1]) === g) e++;
+  while (e + 1 < le && same(e + 1)) e++;
+  if (g === "latin") {
+    while (s < e && s !== i && WORD_EDGE.test(idx.norm[s])) s++;
+    while (e > s && e !== i && WORD_EDGE.test(idx.norm[e])) e--;
+  }
   return [s, e + 1];
 }
 
@@ -213,40 +244,22 @@ export interface SnapResult {
 
 /**
  * ドラッグ範囲に吸着した矩形を返す。
+ * 数字モードは数字（と数字の間の区切り記号）だけ、文字モードは数字以外の文字だけを対象にする。
  * 範囲内（中心が入っている）の対象文字を行ごとに集め、近い文字同士は1つにまとめる。
+ * 間に対象外の文字（文字モードなら数字、数字モードなら漢字など）を挟むときはまとめない。
  */
 export function snapToRange(idx: TextIndex, area: Rect, mode: SnapMode): SnapResult[] {
   if (mode === "free") return [];
   const t = idx.text;
+  const want = mode === "digits" ? CharKind.Number : CharKind.Text;
   const hits: number[] = [];
   for (let i = 0; i < t.chars.length; i++) {
-    const s = idx.norm[i];
-    if (isSpace(s)) continue;
+    if (idx.kind[i] !== want) continue;
     const r = charRect(t, i);
     const cx = r.x + r.w / 2;
     const cy = r.y + r.h / 2;
     if (cx < area.x || cx > area.x + area.w || cy < area.y || cy > area.y + area.h) continue;
-    if (mode === "digits" && !isDigit(s)) {
-      // 数字モードでは、数字と数字の間の区切り記号だけ含める
-      continue;
-    }
     hits.push(i);
-  }
-  if (mode === "digits") {
-    // 数字同士をつなぐ区切り記号も覆う
-    const set = new Set(hits);
-    for (const i of hits) {
-      const g = numberGroupAt(idx, i);
-      if (!g) continue;
-      for (let k = g[0]; k < g[1]; k++) {
-        const r = charRect(t, k);
-        const cx = r.x + r.w / 2;
-        const cy = r.y + r.h / 2;
-        if (cx >= area.x && cx <= area.x + area.w && cy >= area.y && cy <= area.y + area.h) set.add(k);
-      }
-    }
-    hits.length = 0;
-    hits.push(...[...set].sort((a, b) => a - b));
   }
   const out: SnapResult[] = [];
   let run: number[] = [];
@@ -263,7 +276,9 @@ export function snapToRange(idx: TextIndex, area: Rect, mode: SnapMode): SnapRes
       const sameLine = t.lines[prev] === t.lines[i];
       const em = Math.max(t.sizes[prev], t.sizes[i], 1);
       const gap = t.boxes[i * 4] - t.boxes[prev * 4 + 2];
-      if (!sameLine || gap > em * 1.25 || gap < -em) flush();
+      let other = false;
+      for (let k = prev + 1; k < i && !other; k++) other = idx.kind[k] !== CharKind.Space;
+      if (!sameLine || other || gap > em * 1.25 || gap < -em) flush();
     }
     run.push(i);
   }
