@@ -204,16 +204,115 @@ export function HelpOverlay() {
         </div>
         <div className="modal-foot">
           <span className="muted small">
-            <IconShield size={13} /> PDFはこの端末の中だけで処理され、外部には送信されません。作業内容（マスクの位置のみ）はこのブラウザに自動保存されます。
+            <IconShield size={13} /> PDFはこの端末の中だけで処理され、外部には送信されません。
           </span>
-          <button
-            className="btn ghost sm"
-            onClick={() => {
-              const n = clearSavedWork();
-              toast({ message: `自動保存された作業 ${n} 件を消去しました` });
-            }}
-          >
-            自動保存を消去
+          <button className="btn ghost sm" onClick={() => useStore.setState({ helpOpen: false, safetyOpen: true })}>
+            安全性について
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- 安全性について ----
+
+const SOURCE_URL = "https://github.com/osamu-sej/Adobe-H-ver";
+
+export function SafetyDialog() {
+  const open = useStore((s) => s.safetyOpen);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        useStore.setState({ safetyOpen: false });
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [open]);
+  if (!open) return null;
+  const close = () => useStore.setState({ safetyOpen: false });
+  return (
+    <div className="modal-backdrop" onPointerDown={(e) => e.target === e.currentTarget && close()}>
+      <div className="modal safety" role="dialog" aria-modal="true" aria-label="安全性について">
+        <div className="modal-head">
+          <h2>
+            <IconShield size={20} /> 安全性について
+          </h2>
+          <button className="icon-btn" onClick={close} aria-label="閉じる">
+            <IconX />
+          </button>
+        </div>
+        <div className="modal-body">
+          <p className="safety-lead">
+            取り込んだPDFは、<b>お使いのパソコンのブラウザの中だけ</b>で処理されます。インターネット上のどこにも送信されません。
+          </p>
+
+          <section className="safety-sec">
+            <h3>しくみ</h3>
+            <p>
+              このサイトから届くのは「ツールのプログラム」だけです。PDFの表示・加工・書き出しは、ブラウザに読み込んだPDFエンジン（MuPDF）が手元で行い、書き出したファイルも手元に保存されます。サーバーはツールを配るだけで、PDFを受け取る仕組みはありません。
+            </p>
+          </section>
+
+          <section className="safety-sec">
+            <h3>送らないことの保証</h3>
+            <ul>
+              <li>外部への通信を禁止する設定（コンテンツセキュリティポリシー）を組み込んでいます。万一プログラムが送ろうとしても、ブラウザがブロックします。</li>
+              <li>回線を切った状態でも、PDFを開く・隠す・書き出す・検証するまで、すべて動作します。</li>
+              <li>
+                ソースコードは公開されており、誰でも中身を確認できます（
+                <a href={SOURCE_URL} target="_blank" rel="noopener noreferrer">
+                  GitHub
+                </a>
+                ）。
+              </li>
+            </ul>
+          </section>
+
+          <section className="safety-sec">
+            <h3>ご自身で確かめる方法</h3>
+            <ol>
+              <li>このページを開いたあと、Wi-Fiを切る（または機内モードにする）。そのままPDFを開いて、隠して、書き出せることを確かめる。</li>
+              <li>
+                Chromeなら <kbd>F12</kbd> →「Network」タブを開いたままPDFを読み込む。通信が増えないことを確かめる。
+              </li>
+            </ol>
+          </section>
+
+          <section className="safety-sec">
+            <h3>この端末に残るもの</h3>
+            <p>
+              作業の自動保存として、<b>ファイル名とマスクの位置だけ</b>がこのブラウザに残ります（PDF本体と隠した文字は残りません）。共用のパソコンでは、使い終わったら消去してください。
+            </p>
+            <button
+              className="btn ghost sm"
+              onClick={() => {
+                const n = clearSavedWork();
+                toast({ message: `自動保存された作業 ${n} 件を消去しました` });
+              }}
+            >
+              自動保存を消去
+            </button>
+          </section>
+
+          <section className="safety-sec">
+            <h3>書き出したPDFについて</h3>
+            <p>
+              社外に渡すときは、書き出しで<b>「加工したとおり」</b>を選んでください。「見た目だけ重ねる」では、隠した数字の文字データがPDFの中に残ります。
+            </p>
+          </section>
+
+          <p className="muted small">
+            サーバーには、一般のウェブサイトと同じく「ページが開かれた」というアクセス記録（IPアドレスなど）が残ります。PDFの中身やファイル名は届きません。なお、第三者によるセキュリティ監査は受けていません。
+          </p>
+        </div>
+        <div className="modal-foot">
+          <span />
+          <button className="btn primary" onClick={close}>
+            閉じる
           </button>
         </div>
       </div>
@@ -248,6 +347,20 @@ export function EmptyState({ onOpen }: { onOpen: () => void }) {
             「{loading.name}」を読み込み中…（{loading.done + 1}/{loading.total}）
           </div>
         )}
+        <div className="safety-card">
+          <IconShield size={26} />
+          <div className="safety-card-main">
+            <b>PDFはこの端末の外に送信されません</b>
+            <ul>
+              <li>ブラウザの中だけで処理</li>
+              <li>外部への通信はブラウザが禁止</li>
+              <li>回線を切っても使えます</li>
+            </ul>
+          </div>
+          <button className="btn ghost sm" onClick={() => useStore.setState({ safetyOpen: true })}>
+            安全性について
+          </button>
+        </div>
         <ol className="steps">
           <li>
             <b>なぞる</b>
@@ -262,9 +375,6 @@ export function EmptyState({ onOpen }: { onOpen: () => void }) {
             <span>文字ごと完全に削除し、残っていないか自動で検証</span>
           </li>
         </ol>
-        <div className="privacy">
-          <IconShield size={15} /> ファイルはこの端末の外に一切送信されません（オフラインで動作）
-        </div>
       </div>
     </div>
   );
@@ -305,9 +415,13 @@ export function StatusBar() {
         ) : null}
       </span>
       <span className="sb-hint">{hint}</span>
-      <span className="sb-privacy" title="PDFはブラウザ内のPDFエンジン（MuPDF）で処理され、ネットワークには送信されません">
+      <button
+        className="sb-privacy"
+        title="PDFはブラウザの中だけで処理され、外部には送信されません（クリックで詳しく）"
+        onClick={() => useStore.setState({ safetyOpen: true })}
+      >
         <IconShield size={13} /> 端末内で処理
-      </span>
+      </button>
     </footer>
   );
 }
@@ -319,7 +433,7 @@ export function DropOverlay({ active }: { active: boolean }) {
       <div>
         <IconFolderOpen size={40} />
         <b>ドロップして開く</b>
-        <span>PDFを複数まとめて開けます</span>
+        <span>PDFを複数まとめて開けます · 端末の外には送信されません</span>
       </div>
     </div>
   );
