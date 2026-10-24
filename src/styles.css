@@ -197,9 +197,6 @@ kbd {
   color: var(--muted);
   white-space: nowrap;
 }
-.seg.off {
-  opacity: 0.45;
-}
 .seg.levels .tb-btn,
 .tb-btn.level {
   min-width: 30px;
@@ -875,6 +872,66 @@ kbd {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* 塗りの色・透明度 */
+.fill-swatch {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+  background: repeating-conic-gradient(#c9c9cf 0 25%, #fff 0 50%) 0 0 / 8px 8px;
+}
+.fill-swatch i {
+  position: absolute;
+  inset: 0;
+}
+.fill-swatch.mixed {
+  width: 16px;
+  height: 16px;
+  background: linear-gradient(135deg, #000 0 33%, #6b7280 33% 66%, #e8dcc4 66%);
+}
+.fill-name {
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.fill-pop {
+  width: 272px;
+}
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+.swatch {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.16);
+}
+.swatch:hover {
+  transform: scale(1.06);
+}
+.swatch.on {
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.16), 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+}
+.swatch.custom {
+  display: block;
+  background: conic-gradient(#e8492a, #f5c518, #2f7d4f, #3b6fd8, #8b5cf6, #e8492a);
+}
+.swatch.custom input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
 }
 
 /* ===== 右パネル ===== */

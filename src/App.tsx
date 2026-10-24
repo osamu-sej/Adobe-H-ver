@@ -107,7 +107,7 @@ function handleKeyDown(e: KeyboardEvent, openPicker: () => void) {
     useStore.setState({ tool: TOOL_KEYS[k] });
     return;
   }
-  if (/^[1-4]$/.test(e.key)) {
+  if (/^[1-3]$/.test(e.key)) {
     setStyle(STYLE_ORDER[Number(e.key) - 1]);
     return;
   }

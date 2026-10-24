@@ -66,6 +66,8 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
   const defStyle = useStore((s) => s.style);
   const defLevel = useStore((s) => s.level);
   const defStrength = useStore((s) => s.strength);
+  const defColor = useStore((s) => s.fillColor);
+  const defOpacity = useStore((s) => s.fillOpacity);
   const defLabel = useStore((s) => s.label);
   useStore((s) => s.textVersion);
   const panel = useStore((s) => s.panel);
@@ -104,8 +106,17 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
 
   // マスクの効果（モザイク・ぼかし・塗り）
   const previewMasks: PaintMask[] = useMemo(
-    () => preview.map((p) => ({ ...p.rect, style: defStyle, level: defLevel, strength: defStrength, label: defLabel })),
-    [preview, defStyle, defLevel, defStrength, defLabel],
+    () =>
+      preview.map((p) => ({
+        ...p.rect,
+        style: defStyle,
+        level: defLevel,
+        strength: defStrength,
+        color: defColor,
+        opacity: defOpacity,
+        label: defLabel,
+      })),
+    [preview, defStyle, defLevel, defStrength, defColor, defOpacity, defLabel],
   );
   useLayoutEffect(() => {
     const c = fxRef.current;

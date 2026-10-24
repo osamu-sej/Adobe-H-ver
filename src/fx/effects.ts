@@ -24,16 +24,15 @@ export interface Patch {
   height: number;
 }
 
-/** 強さ（pt）の範囲。「弱」では数字がうっすら判別できる細かさまで下げられる */
-export const MIN_STRENGTH = 0.8;
+/** 強さ（pt）の範囲。「弱」では数字を多少は推測できる細かさまで下げられる */
+export const MIN_STRENGTH = 0.5;
 export const MAX_STRENGTH = 48;
 
 /** 程度ごとの強さ：文字の高さ（マスクの短辺）に対する割合と下限（pt） */
 const LEVELS: Record<Level, { factor: number; floor: number }> = {
-  weak: { factor: 0.2, floor: MIN_STRENGTH },
-  medium: { factor: 0.32, floor: 2 },
-  // 「強」は仕様の「ブロックは文字高の半分以上」を満たす
-  strong: { factor: 0.5, floor: 3.5 },
+  weak: { factor: 0.14, floor: MIN_STRENGTH },
+  medium: { factor: 0.2, floor: 0.8 },
+  strong: { factor: 0.32, floor: 2 },
 };
 
 /** 程度から決まる強さ。短辺（1行の文字なら文字高）を基準にし、大きな範囲でも24ptまでに収める */
@@ -65,21 +64,34 @@ export function patchSize(rect: Rect, outScale: number): { width: number; height
   };
 }
 
+export interface FillSpec {
+  color: string;
+  opacity: number;
+}
+
+export function hexToRgb(hex: string): [number, number, number] {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  const n = m ? parseInt(m[1], 16) : 0;
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** 塗りが不透明か（下の内容を参照しなくてよいか） */
+export function isOpaqueFill(fill: FillSpec): boolean {
+  return fill.opacity >= 0.999;
+}
+
 export function renderPatch(
   src: PixelSource,
   rect: Rect,
   style: MaskStyle,
   strength: number,
   outScale: number,
+  fill: FillSpec = { color: "#000000", opacity: 1 },
 ): Patch {
   const { width, height } = patchSize(rect, outScale);
   const out = new Uint8ClampedArray(width * height * 4);
-  if (style === "black" || style === "white") {
-    const v = style === "black" ? 0 : 255;
-    for (let i = 0; i < out.length; i += 4) {
-      out[i] = out[i + 1] = out[i + 2] = v;
-      out[i + 3] = 255;
-    }
+  if (style === "fill") {
+    fillInto(src, rect, fill, outScale, out, width, height);
     return { data: out, width, height };
   }
   if (style === "mosaic") {
@@ -88,6 +100,39 @@ export function renderPatch(
     blurInto(src, rect, strength, outScale, out, width, height);
   }
   return { data: out, width, height };
+}
+
+/** 塗りつぶし。透明度があるときは、元の見た目に色を重ねた画像にする（下が透けて見える） */
+function fillInto(
+  src: PixelSource,
+  rect: Rect,
+  fill: FillSpec,
+  outScale: number,
+  out: Uint8ClampedArray,
+  width: number,
+  height: number,
+) {
+  const [cr, cg, cb] = hexToRgb(fill.color);
+  const a = Math.max(0, Math.min(1, fill.opacity));
+  const ch = src.channels;
+  for (let y = 0; y < height; y++) {
+    const sy = clampInt(Math.floor((rect.y + (y + 0.5) / outScale) * src.scale - src.originY), 0, src.height - 1);
+    for (let x = 0; x < width; x++) {
+      const p = (y * width + x) * 4;
+      if (a >= 0.999) {
+        out[p] = cr;
+        out[p + 1] = cg;
+        out[p + 2] = cb;
+      } else {
+        const sx = clampInt(Math.floor((rect.x + (x + 0.5) / outScale) * src.scale - src.originX), 0, src.width - 1);
+        const q = (sy * src.width + sx) * ch;
+        out[p] = src.data[q] * (1 - a) + cr * a;
+        out[p + 1] = src.data[q + 1] * (1 - a) + cg * a;
+        out[p + 2] = src.data[q + 2] * (1 - a) + cb * a;
+      }
+      out[p + 3] = 255;
+    }
+  }
 }
 
 function mosaicInto(
@@ -264,6 +309,14 @@ type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 export const LABEL_FONT =
   '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", "Yu Gothic", Meiryo, sans-serif';
 
+/** 塗りの上の文字色：塗りが暗ければ白、明るければ濃いグレー（透明度があれば下地の白も考える） */
+function labelColorOn(fill: FillSpec): string {
+  const [r, g, b] = hexToRgb(fill.color);
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  const a = Math.max(0, Math.min(1, fill.opacity));
+  return lum * a + (1 - a) < 0.55 ? "#ffffff" : "#1f2937";
+}
+
 /** マスク上の文言（「非開示」など）を描く。座標はctxのピクセル単位 */
 export function drawLabel(
   ctx: Ctx2D,
@@ -273,6 +326,7 @@ export function drawLabel(
   h: number,
   label: string,
   style: MaskStyle,
+  fill: FillSpec = { color: "#000000", opacity: 1 },
 ) {
   if (!label || w < 4 || h < 4) return;
   ctx.save();
@@ -299,7 +353,7 @@ export function drawLabel(
     ctx.fillRect(cx - pw / 2, cy - ph / 2, pw, ph);
     ctx.fillStyle = "#fff";
   } else {
-    ctx.fillStyle = style === "black" ? "#fff" : "#4b5563";
+    ctx.fillStyle = labelColorOn(fill);
   }
   ctx.fillText(label, cx, cy + size * 0.04);
   ctx.restore();

@@ -27,6 +27,9 @@ export interface ExportMask extends Rect {
   page: number;
   style: MaskStyle;
   strength: number;
+  /** 塗りつぶしの色（#rrggbb）と不透明度 */
+  color: string;
+  opacity: number;
   label: string | null;
   text?: string;
 }

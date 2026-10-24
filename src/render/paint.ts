@@ -1,4 +1,4 @@
-import { blurMargin, drawLabel, renderPatch, resolveStrength, type PixelSource } from "../fx/effects";
+import { blurMargin, drawLabel, isOpaqueFill, renderPatch, resolveStrength, type PixelSource } from "../fx/effects";
 import { clampRect } from "../model/geometry";
 import type { Level, MaskStyle, Rect, Rot } from "../model/types";
 import type { PageBitmap } from "./bitmaps";
@@ -7,6 +7,8 @@ export interface PaintMask extends Rect {
   style: MaskStyle;
   level: Level;
   strength: number | null;
+  color: string;
+  opacity: number;
   label: string | null;
 }
 
@@ -36,10 +38,10 @@ function scratch2d() {
 
 const patchCache = new WeakMap<ImageBitmap, Map<string, HTMLCanvasElement>>();
 
-/** マスク1つ分のモザイク／ぼかし画像（表示中のページ画像から作る。書き出しと同じ処理） */
+/** マスク1つ分のモザイク／ぼかし／塗りの画像（表示中のページ画像から作る。書き出しと同じ処理） */
 function maskPatch(bmp: PageBitmap, m: PaintMask): HTMLCanvasElement | null {
   const strength = resolveStrength(m);
-  const key = `${m.x.toFixed(2)},${m.y.toFixed(2)},${m.w.toFixed(2)},${m.h.toFixed(2)},${m.style},${strength.toFixed(2)},${m.label ?? ""}`;
+  const key = `${m.x.toFixed(2)},${m.y.toFixed(2)},${m.w.toFixed(2)},${m.h.toFixed(2)},${m.style},${strength.toFixed(2)},${m.color},${m.opacity.toFixed(2)},${m.label ?? ""}`;
   let cache = patchCache.get(bmp.bitmap);
   if (!cache) patchCache.set(bmp.bitmap, (cache = new Map()));
   const hit = cache.get(key);
@@ -56,7 +58,7 @@ function maskPatch(bmp: PageBitmap, m: PaintMask): HTMLCanvasElement | null {
   if (sw <= 0 || sh <= 0) return null;
 
   let src: PixelSource;
-  if (m.style === "mosaic" || m.style === "blur") {
+  if (m.style !== "fill" || !isOpaqueFill(m)) {
     const { canvas, ctx } = scratch2d();
     canvas.width = sw;
     canvas.height = sh;
@@ -66,13 +68,13 @@ function maskPatch(bmp: PageBitmap, m: PaintMask): HTMLCanvasElement | null {
   } else {
     src = { data: new Uint8ClampedArray(4), width: 1, height: 1, channels: 4, originX: 0, originY: 0, scale: s };
   }
-  const patch = renderPatch(src, m, m.style, strength, s);
+  const patch = renderPatch(src, m, m.style, strength, s, m);
   const c = document.createElement("canvas");
   c.width = patch.width;
   c.height = patch.height;
   const ctx = c.getContext("2d")!;
   ctx.putImageData(new ImageData(new Uint8ClampedArray(patch.data), patch.width, patch.height), 0, 0);
-  if (m.label) drawLabel(ctx, 0, 0, patch.width, patch.height, m.label, m.style);
+  if (m.label) drawLabel(ctx, 0, 0, patch.width, patch.height, m.label, m.style, m);
   if (cache.size > 600) cache.clear();
   cache.set(key, c);
   return c;
@@ -97,9 +99,12 @@ export function paintMasks(
   for (const raw of masks) {
     const m = { ...raw, ...clampRect(raw, pageW, pageH) };
     if (m.w <= 0 || m.h <= 0) continue;
-    if ((m.style === "black" || m.style === "white") && !m.label) {
-      ctx.fillStyle = m.style === "black" ? "#000" : "#fff";
+    if (m.style === "fill" && !m.label) {
+      // ページ画像の上に重ねるキャンバスなので、透ける塗りもそのまま半透明で塗れば書き出しと同じ見た目になる
+      ctx.globalAlpha = m.opacity;
+      ctx.fillStyle = m.color;
       ctx.fillRect(m.x, m.y, m.w, m.h);
+      ctx.globalAlpha = 1;
       continue;
     }
     const patch = maskPatch(bmp, m);

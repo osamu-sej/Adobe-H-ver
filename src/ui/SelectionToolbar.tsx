@@ -1,24 +1,25 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { MAX_STRENGTH, MIN_STRENGTH, resolveStrength } from "../fx/effects";
 import { suggestForSelection } from "../model/actions";
 import { beginGesture, deleteMasks, endGesture, updateGesture, updateMasks, useStore } from "../model/store";
 import { LEVEL_HINT, LEVEL_LABEL, LEVEL_ORDER, STYLE_LABEL, STYLE_ORDER, type MaskStyle } from "../model/types";
-import { IconBlack, IconBlur, IconMosaic, IconSlider, IconTag, IconTrash, IconWand, IconWhite } from "./icons";
+import { FillPopover, FillSwatch } from "./FillPicker";
+import { IconBlur, IconFill, IconMosaic, IconSlider, IconTag, IconTrash, IconWand } from "./icons";
 import { setLevel } from "./TopBar";
 
 export const STYLE_ICON: Record<MaskStyle, (p: { size?: number }) => React.ReactElement> = {
   mosaic: IconMosaic,
   blur: IconBlur,
-  black: IconBlack,
-  white: IconWhite,
+  fill: IconFill,
 };
 
 export const LABEL_PRESETS = ["非開示", "個人情報", "黒塗り", "マスキング済"];
 
 export function SelectionToolbar({ left, top, below }: { left: number; top: number; below: boolean }) {
   const selected = useStore(useShallow((s) => s.masks.filter((m) => s.selection.includes(m.id))));
-  const [open, setOpen] = useState<"strength" | "label" | null>(null);
+  const [open, setOpen] = useState<"strength" | "label" | "fill" | null>(null);
+  const closeFill = useCallback(() => setOpen((o) => (o === "fill" ? null : o)), []);
   if (!selected.length) return null;
   const ids = selected.map((m) => m.id);
   const styles = new Set(selected.map((m) => m.style));
@@ -28,6 +29,9 @@ export function SelectionToolbar({ left, top, below }: { left: number; top: numb
   const label = one(selected.map((m) => m.label));
   const current = resolveStrength(selected[0]);
   const showStrength = selected.some((m) => m.style === "mosaic" || m.style === "blur");
+  const fills = selected.filter((m) => m.style === "fill");
+  const fillColor = one(fills.map((m) => m.color));
+  const fillOpacity = one(fills.map((m) => m.opacity));
 
   const setStyle = (style: MaskStyle) => {
     updateMasks(ids, { style });
@@ -118,6 +122,23 @@ export function SelectionToolbar({ left, top, below }: { left: number; top: numb
               </div>
             </div>
           )}
+        </div>
+      )}
+      {fills.length > 0 && (
+        <div className="pop-anchor">
+          <button
+            className={"tb-btn" + (open === "fill" ? " active" : "")}
+            title="塗りの色と透明度"
+            aria-expanded={open === "fill"}
+            onClick={() => setOpen(open === "fill" ? null : "fill")}
+          >
+            {fillColor === undefined ? (
+              <span className="fill-swatch mixed" aria-hidden="true" />
+            ) : (
+              <FillSwatch color={fillColor} opacity={fillOpacity ?? 1} />
+            )}
+          </button>
+          {open === "fill" && <FillPopover color={fillColor} opacity={fillOpacity} onClose={closeFill} />}
         </div>
       )}
       <div className="pop-anchor">

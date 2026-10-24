@@ -55,6 +55,9 @@ interface AppState extends Snapshot {
   snap: SnapMode;
   level: Level;
   strength: number | null;
+  /** 新しい塗りつぶしの色と不透明度 */
+  fillColor: string;
+  fillOpacity: number;
   label: string | null;
   selection: string[];
   /** 選択中のマスクの上に操作ツールバーを出すか（作った直後は出さない） */
@@ -105,6 +108,8 @@ export const useStore = create<AppState>(() => ({
   snap: "digits",
   level: "strong",
   strength: null,
+  fillColor: "#000000",
+  fillOpacity: 1,
   label: null,
   selection: [],
   toolbar: false,

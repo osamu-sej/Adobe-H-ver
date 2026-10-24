@@ -1,5 +1,5 @@
 import type * as M from "mupdf";
-import { drawLabel, renderPatch, type Patch, type PixelSource } from "../fx/effects";
+import { drawLabel, hexToRgb, isOpaqueFill, renderPatch, type FillSpec, type Patch, type PixelSource } from "../fx/effects";
 import { inflate, overlapArea, toViewRect } from "../model/geometry";
 import { countStandalone, isMeaningfulValue, normalize } from "../model/normalize";
 import type { Rect, Rot } from "../model/types";
@@ -170,9 +170,9 @@ async function redactPage(mupdf: Mupdf, doc: M.PDFDocument, pageIndex: number, m
   const pw = b[2] - b[0];
   const ph = b[3] - b[1];
 
-  // 1) 墨消し前のページ画像からモザイク・ぼかしを作る
+  // 1) 墨消し前のページ画像からモザイク・ぼかし（と透ける塗り）を作る
   let src: PixelSource | null = null;
-  if (masks.some((m) => m.style === "mosaic" || m.style === "blur")) {
+  if (masks.some((m) => m.style !== "fill" || !isOpaqueFill(m))) {
     const k = Math.min(SAMPLE_SCALE, Math.sqrt(30_000_000 / Math.max(1, pw * ph)));
     const pix = page.toPixmap(mupdf.Matrix.scale(k, k), mupdf.ColorSpace.DeviceRGB, false, true);
     src = {
@@ -187,21 +187,22 @@ async function redactPage(mupdf: Mupdf, doc: M.PDFDocument, pageIndex: number, m
     pix.destroy();
   }
 
-  type Overlay = { rect: Rect; fill: number } | { rect: Rect; image: M.PDFObject };
+  type Overlay = { rect: Rect; fill: [number, number, number] } | { rect: Rect; image: M.PDFObject };
   const overlays: Overlay[] = [];
   for (const m of masks) {
     const rect = clipRect(m, pw, ph);
     if (rect.w <= 0 || rect.h <= 0) continue;
-    if ((m.style === "black" || m.style === "white") && !m.label) {
-      overlays.push({ rect, fill: m.style === "black" ? 0 : 1 });
+    // 不透明な塗りは図形で塗る。透ける塗りは、元の見た目に色を重ねた画像にする（下の文字を消しても透けて見える）
+    if (m.style === "fill" && isOpaqueFill(m) && !m.label) {
+      overlays.push({ rect, fill: hexToRgb(m.color) });
       continue;
     }
     const outScale =
-      m.style === "blur" && src
+      m.style !== "mosaic" && src
         ? Math.min(src.scale, Math.sqrt(PATCH_MAX_PIXELS / (rect.w * rect.h)))
         : Math.min(4, Math.sqrt(PATCH_MAX_PIXELS / (rect.w * rect.h)));
-    let patch = renderPatch(src ?? EMPTY_SOURCE, rect, m.style, m.strength, outScale);
-    if (m.label) patch = withLabel(patch, m.label, m.style);
+    let patch = renderPatch(src ?? EMPTY_SOURCE, rect, m.style, m.strength, outScale, m);
+    if (m.label) patch = withLabel(patch, m.label, m.style, m);
     const image = new mupdf.Image(pixmapFromPatch(mupdf, patch));
     const ref = doc.addImage(image);
     image.destroy();
@@ -250,7 +251,8 @@ async function redactPage(mupdf: Mupdf, doc: M.PDFDocument, pageIndex: number, m
       const c = apply(toUser, fx + o.rect.w, fy + o.rect.h);
       const ux = Math.min(a[0], c[0]);
       const uy = Math.min(a[1], c[1]);
-      ops += `q ${o.fill} g ${num(ux)} ${num(uy)} ${num(Math.abs(c[0] - a[0]))} ${num(Math.abs(c[1] - a[1]))} re f Q\n`;
+      const [r, g, b] = o.fill.map((v) => num(v / 255));
+      ops += `q ${r} ${g} ${b} rg ${num(ux)} ${num(uy)} ${num(Math.abs(c[0] - a[0]))} ${num(Math.abs(c[1] - a[1]))} re f Q\n`;
     } else {
       const name = `KakusuP${pageIndex}M${i}`;
       xobjects.put(name, o.image);
@@ -324,13 +326,13 @@ function pixmapFromPatch(mupdf: Mupdf, patch: Patch): M.Pixmap {
   return pix;
 }
 
-function withLabel(patch: Patch, label: string, style: ExportMask["style"]): Patch {
+function withLabel(patch: Patch, label: string, style: ExportMask["style"], fill: FillSpec): Patch {
   if (typeof OffscreenCanvas === "undefined") return patch;
   const canvas = new OffscreenCanvas(patch.width, patch.height);
   const ctx = canvas.getContext("2d");
   if (!ctx) return patch;
   ctx.putImageData(new ImageData(new Uint8ClampedArray(patch.data), patch.width, patch.height), 0, 0);
-  drawLabel(ctx, 0, 0, patch.width, patch.height, label, style);
+  drawLabel(ctx, 0, 0, patch.width, patch.height, label, style, fill);
   const img = ctx.getImageData(0, 0, patch.width, patch.height);
   return { data: img.data, width: patch.width, height: patch.height };
 }
