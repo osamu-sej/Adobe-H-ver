@@ -13,7 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "fflate": "0.8.2",
+    "fflate": "0.8.3",
     "mupdf": "1.28.1",
     "react": "19.2.9",
     "react-dom": "19.2.9",
@@ -26,6 +26,6 @@
     "@vitejs/plugin-react": "5.1.4",
     "typescript": "5.9.3",
     "vite": "7.3.7",
-    "vitest": "3.2.7"
+    "vitest": "4.1.12"
   }
 }
