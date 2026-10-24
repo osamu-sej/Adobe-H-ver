@@ -30,7 +30,7 @@ export type SnapMode = "digits" | "text" | "free";
 
 export const SNAP_LABEL: Record<SnapMode, string> = {
   digits: "数字に吸着",
-  text: "文字に吸着",
+  text: "文字（数字以外）に吸着",
   free: "自由範囲",
 };
 
