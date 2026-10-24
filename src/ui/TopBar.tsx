@@ -1,6 +1,17 @@
 import { useEffect, useState } from "react";
-import { redo, undo, updateMasks, useStore } from "../model/store";
-import { SNAP_LABEL, STYLE_LABEL, STYLE_ORDER, type MaskStyle, type SnapMode, type Tool } from "../model/types";
+import { redo, toast, undo, updateMasks, useStore } from "../model/store";
+import {
+  LEVEL_HINT,
+  LEVEL_LABEL,
+  LEVEL_ORDER,
+  SNAP_LABEL,
+  STYLE_LABEL,
+  STYLE_ORDER,
+  type Level,
+  type MaskStyle,
+  type SnapMode,
+  type Tool,
+} from "../model/types";
 import {
   IconCrop,
   IconDownload,
@@ -44,6 +55,23 @@ export function setStyle(style: MaskStyle) {
   useStore.setState({ style });
 }
 
+/** 程度（弱・中・強）を選ぶ。選択中のマスクにも適用し、細かい調整は解除する */
+export function setLevel(level: Level) {
+  const s = useStore.getState();
+  if (s.selection.length) updateMasks(s.selection, { level, strength: null });
+  useStore.setState({ level, strength: null });
+}
+
+/** [ ] キー：程度を1段階ずつ変える */
+export function stepLevel(dir: 1 | -1) {
+  const s = useStore.getState();
+  const sel = s.masks.find((m) => s.selection.includes(m.id) && (m.style === "mosaic" || m.style === "blur"));
+  const cur = sel ? sel.level : s.level;
+  const next = LEVEL_ORDER[Math.max(0, Math.min(LEVEL_ORDER.length - 1, LEVEL_ORDER.indexOf(cur) + dir))];
+  setLevel(next);
+  toast({ message: `程度：${LEVEL_LABEL[next]}（${LEVEL_HINT[next]}）`, duration: 1400 });
+}
+
 export function toggleFullscreen() {
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   else document.documentElement.requestFullscreen?.().catch(() => {});
@@ -73,7 +101,18 @@ export function TopBar({ onOpen }: { onOpen: () => void }) {
     document.addEventListener("fullscreenchange", on);
     return () => document.removeEventListener("fullscreenchange", on);
   }, []);
+  const level = useStore((s) => s.level);
+  const strength = useStore((s) => s.strength);
+  const selLevel = useStore((s) => {
+    const sel = s.masks.filter((m) => s.selection.includes(m.id) && (m.style === "mosaic" || m.style === "blur"));
+    if (!sel.length) return null;
+    if (sel.some((m) => m.strength !== null)) return "custom";
+    const set = new Set(sel.map((m) => m.level));
+    return set.size === 1 ? [...set][0] : "mixed";
+  });
   const shownStyle = selStyles && selStyles !== "mixed" ? selStyles : style;
+  const shownLevel = selLevel ?? (strength !== null ? "custom" : level);
+  const levelOff = selLevel === null && (shownStyle === "black" || shownStyle === "white");
 
   return (
     <header className="topbar">
@@ -133,6 +172,27 @@ export function TopBar({ onOpen }: { onOpen: () => void }) {
               </button>
             );
           })}
+        </div>
+
+        <div
+          className={"seg levels" + (levelOff ? " off" : "")}
+          role="radiogroup"
+          aria-label="モザイク・ぼかしの程度"
+          title={levelOff ? "黒塗り・白塗りには程度はありません" : undefined}
+        >
+          <span className="seg-label">程度</span>
+          {LEVEL_ORDER.map((l) => (
+            <button
+              key={l}
+              role="radio"
+              aria-checked={shownLevel === l}
+              className={"tb-btn" + (shownLevel === l ? " active" : "")}
+              title={`${LEVEL_LABEL[l]}：${LEVEL_HINT[l]}（[ と ] で切替）${selLevel ? "：選択中のマスクにも適用" : ""}`}
+              onClick={() => setLevel(l)}
+            >
+              {LEVEL_LABEL[l]}
+            </button>
+          ))}
         </div>
 
         <div className="seg" role="radiogroup" aria-label="吸着">

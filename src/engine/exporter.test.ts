@@ -4,14 +4,14 @@ import { describe, expect, it } from "vitest";
 import { resolveStrength } from "../fx/effects";
 import { presetRegex } from "../model/presets";
 import { buildIndex, searchIndex } from "../model/text";
-import type { MaskStyle } from "../model/types";
+import type { Level, MaskStyle } from "../model/types";
 import { runExport } from "./exporter";
 import type { ExportMask, ExportOptions } from "./protocol";
 import { extractPageText } from "./textExtract";
 
 const SAMPLE = new Uint8Array(readFileSync(new URL("../../public/sample.pdf", import.meta.url)));
 
-function findMasks(page: number, preset: string, style: MaskStyle, label: string | null = null): ExportMask[] {
+function findMasks(page: number, preset: string, style: MaskStyle, label: string | null = null, level: Level = "strong"): ExportMask[] {
   const doc = new mupdf.PDFDocument(SAMPLE);
   const idx = buildIndex(extractPageText(doc.loadPage(page)));
   doc.destroy();
@@ -21,7 +21,7 @@ function findMasks(page: number, preset: string, style: MaskStyle, label: string
       id: `${preset}-${page}-${i}`,
       page,
       style,
-      strength: resolveStrength({ ...r, strength: null }),
+      strength: resolveStrength({ ...r, strength: null, level }),
       label,
       text: m.text,
     })),
@@ -32,6 +32,7 @@ const baseOptions: ExportOptions = {
   mode: "separate",
   mergedName: "merged.pdf",
   rasterize: false,
+  keepText: false,
   rasterDpi: 150,
   flatten: true,
   stripMetadata: true,
@@ -129,6 +130,44 @@ describe("書き出し（墨消し）", () => {
     expect(doc.hasPermission("copy")).toBe(false);
     expect(doc.hasPermission("print")).toBe(true);
     doc.destroy();
+  });
+
+  it("見た目だけ重ねる：加工は画面どおりに重なり、元の文字は残る", async () => {
+    const masks = findMasks(0, "phone", "blur", null, "weak");
+    const result = await runExport(
+      mupdf,
+      {
+        docs: [{ docId: "a", name: "out.pdf", order: [0], rot: {}, masks }],
+        options: { ...baseOptions, keepText: true },
+      },
+      source,
+      () => {},
+    );
+    const [file] = result.files;
+    expect(file.report.textKept).toBe(true);
+    expect(file.report.passed).toBe(true);
+    expect(file.report.residues).toEqual([]);
+    expect(file.report.pixelDiffPercent).toBeLessThan(0.5);
+    // 元の文字は残る
+    expect(textOf(file.bytes)[0]).toContain("090-1234-5678");
+    // マスクの場所には、ぼかしが重なっている（元の見た目と違う）
+    const out = new mupdf.PDFDocument(file.bytes);
+    const src = new mupdf.PDFDocument(SAMPLE);
+    const m = masks[0];
+    const crop = (d: mupdf.PDFDocument) => {
+      const pix = d.loadPage(0).toPixmap(mupdf.Matrix.scale(2, 2), mupdf.ColorSpace.DeviceRGB, false, true);
+      const px = pix.getPixels();
+      const vals: number[] = [];
+      for (let y = Math.ceil(m.y * 2); y < Math.floor((m.y + m.h) * 2); y++)
+        for (let x = Math.ceil(m.x * 2); x < Math.floor((m.x + m.w) * 2); x++) vals.push(px[(y * pix.getWidth() + x) * 3]);
+      return vals;
+    };
+    const a = crop(src);
+    const b = crop(out);
+    const changed = a.filter((v, i) => Math.abs(v - b[i]) > 24).length / a.length;
+    expect(changed).toBeGreaterThan(0.1);
+    out.destroy();
+    src.destroy();
   });
 
   it("結合＋画像化では文字が一切残らない", async () => {

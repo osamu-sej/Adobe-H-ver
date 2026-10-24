@@ -144,7 +144,7 @@ export function maskFrom(docId: string, page: number, r: Rect, text?: string): M
     const idx = getText(docId, page);
     text = idx ? textUnder(idx, rect) || undefined : undefined;
   }
-  return { id: newMaskId(), docId, page, ...rect, style: s.style, strength: s.strength, label: s.label, text };
+  return { id: newMaskId(), docId, page, ...rect, style: s.style, level: s.level, strength: s.strength, label: s.label, text };
 }
 
 // ---- 同じ値の提案 ----

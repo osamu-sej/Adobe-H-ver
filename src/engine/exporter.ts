@@ -128,8 +128,8 @@ async function processDoc(
 
   for (const [pageIndex, masks] of [...byPage.entries()].sort((a, b) => a[0] - b[0])) {
     if (pageIndex >= sizes.length) continue;
-    await redactPage(mupdf, doc, pageIndex, masks);
-    step(`${ed.name}：${pageIndex + 1}ページを墨消し中`);
+    await redactPage(mupdf, doc, pageIndex, masks, opts.keepText && !opts.rasterize);
+    step(`${ed.name}：${pageIndex + 1}ページを加工中`);
   }
 
   // ユーザーが加えた回転
@@ -163,7 +163,7 @@ async function processDoc(
   });
 }
 
-async function redactPage(mupdf: Mupdf, doc: M.PDFDocument, pageIndex: number, masks: ExportMask[]) {
+async function redactPage(mupdf: Mupdf, doc: M.PDFDocument, pageIndex: number, masks: ExportMask[], keepText: boolean) {
   const page = doc.loadPage(pageIndex);
   const b = page.getBounds();
   const [x0, y0] = b;
@@ -209,21 +209,23 @@ async function redactPage(mupdf: Mupdf, doc: M.PDFDocument, pageIndex: number, m
     overlays.push({ rect, image: ref });
   }
 
-  // 2) 領域内の文字・画像・図形を恒久的に削除する
-  for (const m of masks) {
-    const r = clipRect(m, pw, ph);
-    if (r.w <= 0 || r.h <= 0) continue;
-    const annot = page.createAnnotation("Redact");
-    annot.setRect([x0 + r.x, y0 + r.y, x0 + r.x + r.w, y0 + r.y + r.h]);
+  // 2) 領域内の文字・画像・図形を恒久的に削除する（「見た目だけ重ねる」では消さない）
+  if (!keepText) {
+    for (const m of masks) {
+      const r = clipRect(m, pw, ph);
+      if (r.w <= 0 || r.h <= 0) continue;
+      const annot = page.createAnnotation("Redact");
+      annot.setRect([x0 + r.x, y0 + r.y, x0 + r.x + r.w, y0 + r.y + r.h]);
+    }
+    page.applyRedactions(
+      false,
+      mupdf.PDFPage.REDACT_IMAGE_PIXELS,
+      mupdf.PDFPage.REDACT_LINE_ART_REMOVE_IF_COVERED,
+      mupdf.PDFPage.REDACT_TEXT_REMOVE,
+    );
   }
-  page.applyRedactions(
-    false,
-    mupdf.PDFPage.REDACT_IMAGE_PIXELS,
-    mupdf.PDFPage.REDACT_LINE_ART_REMOVE_IF_COVERED,
-    mupdf.PDFPage.REDACT_TEXT_REMOVE,
-  );
 
-  // 3) 消した場所にモザイク画像・塗りを重ねる
+  // 3) モザイク画像・塗りを、画面と同じ見た目で重ねる
   const pageObj = page.getObject();
   let res = pageObj.get("Resources");
   if (!res.isDictionary()) {
@@ -550,7 +552,9 @@ function verify(
   out.destroy();
   const residues: Residue[] = [];
   const seen = new Set<string>();
-  for (const map of maps) {
+  const textKept = opts.keepText && !opts.rasterize;
+  // 文字を残す設定では、マスクの下の値そのものが見つかるので調べない
+  for (const map of textKept ? [] : maps) {
     for (const t of map.texts) {
       const v = normalize(t).trim();
       if (!isMeaningfulValue(v) || seen.has(v)) continue;
@@ -580,7 +584,7 @@ function verify(
   const metaClean =
     !opts.stripMetadata ||
     (!hasXmp && Object.values(metadata).every((v) => allowedMeta.has(v) || /mupdf/i.test(v)));
-  const passed = leakedChars === 0 && pixelDiffPercent < (opts.rasterize ? 1.5 : 0.5) && metaClean;
+  const passed = (textKept || leakedChars === 0) && pixelDiffPercent < (opts.rasterize ? 1.5 : 0.5) && metaClean;
   return {
     leakedChars,
     leakedSamples,
@@ -589,6 +593,7 @@ function verify(
     metadata,
     hasXmp,
     metadataClean: metaClean,
+    textKept,
     encrypted,
     residues,
     passed,

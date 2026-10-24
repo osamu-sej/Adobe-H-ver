@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { engine } from "./engine/client";
-import { MAX_STRENGTH, MIN_STRENGTH, resolveStrength } from "./fx/effects";
 import { applySuggestion, isPdfFile, maskSearchHits, openFiles } from "./model/actions";
 import {
   beginGesture,
@@ -13,7 +12,6 @@ import {
   toast,
   undo,
   updateGesture,
-  updateMasks,
   useStore,
 } from "./model/store";
 import { STYLE_ORDER, type SnapMode, type Tool } from "./model/types";
@@ -22,7 +20,7 @@ import { ExportDialog } from "./ui/ExportDialog";
 import { DropOverlay, EmptyState, HelpOverlay, PasswordDialog, StatusBar, SuggestionBar, Toasts } from "./ui/Overlays";
 import { focusSearch, SidePanel } from "./ui/SidePanel";
 import { Sidebar } from "./ui/Sidebar";
-import { setStyle, toggleFullscreen, TopBar } from "./ui/TopBar";
+import { setStyle, stepLevel, toggleFullscreen, TopBar } from "./ui/TopBar";
 import { viewerApi, Viewer } from "./ui/Viewer";
 
 const SNAP_CYCLE: SnapMode[] = ["digits", "text", "free"];
@@ -160,17 +158,9 @@ function handleKeyDown(e: KeyboardEvent, openPicker: () => void) {
       }
       return;
     case "[":
-    case "]": {
-      const sel = s.masks.filter((m) => s.selection.includes(m.id));
-      const step = e.key === "]" ? 1.25 : 0.8;
-      if (sel.length) {
-        updateMasks(
-          sel.map((m) => m.id),
-          (m) => ({ strength: Math.round(Math.max(MIN_STRENGTH, Math.min(MAX_STRENGTH, resolveStrength(m) * step)) * 2) / 2 }),
-        );
-      }
+    case "]":
+      stepLevel(e.key === "]" ? 1 : -1);
       return;
-    }
     case "PageDown":
     case "j":
       e.preventDefault();

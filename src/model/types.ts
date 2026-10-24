@@ -12,6 +12,19 @@ export const STYLE_LABEL: Record<MaskStyle, string> = {
 
 export const STYLE_ORDER: MaskStyle[] = ["mosaic", "blur", "black", "white"];
 
+/** モザイク・ぼかしの程度。弱＝うっすら判別できる、中＝ほとんど読めない、強＝まったく読めない */
+export type Level = "weak" | "medium" | "strong";
+
+export const LEVEL_ORDER: Level[] = ["weak", "medium", "strong"];
+
+export const LEVEL_LABEL: Record<Level, string> = { weak: "弱", medium: "中", strong: "強" };
+
+export const LEVEL_HINT: Record<Level, string> = {
+  weak: "うっすら判別できる程度",
+  medium: "ほとんど読めない",
+  strong: "まったく読めない",
+};
+
 /** 吸着モード。数字＝数字だけに吸着、文字＝文字全般、自由＝ドラッグ範囲そのまま */
 export type SnapMode = "digits" | "text" | "free";
 
@@ -35,7 +48,9 @@ export interface Mask extends Rect {
   /** 元PDFでのページ番号（0始まり）。並べ替え・削除しても変わらない */
   page: number;
   style: MaskStyle;
-  /** モザイクのブロック／ぼかしの強さ（pt）。null は自動 */
+  /** モザイク・ぼかしの程度（strength が null のときに使う） */
+  level: Level;
+  /** モザイクのブロック／ぼかしの強さ（pt）を細かく指定したとき。null は程度から自動 */
   strength: number | null;
   /** 墨消しの上に重ねる文言（「非開示」など） */
   label: string | null;

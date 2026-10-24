@@ -277,3 +277,10 @@ export const IconWand = (p: P) => (
     <path d="M4 20L15 9M14 5V3M19 10h2M17.5 6.5L19 5M9.5 6.5L8 5M17.5 13.5L19 15" />
   </Svg>
 );
+
+export const IconLayers = (p: P) => (
+  <Svg {...p}>
+    <path d="M12 3l9 5-9 5-9-5z" />
+    <path d="M3 13l9 5 9-5" />
+  </Svg>
+);

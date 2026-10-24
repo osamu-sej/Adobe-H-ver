@@ -4,7 +4,7 @@ import { resolveStrength } from "../fx/effects";
 import { engine } from "../engine/client";
 import type { EncryptionOptions, ExportFile, ExportJob, Permissions } from "../engine/protocol";
 import { toast, useStore } from "../model/store";
-import { IconAlert, IconCheck, IconDownload, IconLock, IconShield, IconX } from "./icons";
+import { IconAlert, IconCheck, IconDownload, IconLayers, IconLock, IconShield, IconX } from "./icons";
 
 const DEFAULT_PERMS: Permissions = {
   print: true,
@@ -27,7 +27,7 @@ const PERM_LABEL: Record<keyof Permissions, string> = {
 };
 
 function outName(name: string) {
-  return name.replace(/\.pdf$/i, "") + "_墨消し済.pdf";
+  return name.replace(/\.pdf$/i, "") + "_加工済.pdf";
 }
 
 function download(name: string, bytes: Uint8Array, type = "application/pdf") {
@@ -46,6 +46,9 @@ function stamp() {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
 }
+
+/** 仕上がり：加工したとおり（下の文字は消す）／見た目だけ重ねる（文字は残す）／全ページ画像 */
+type Method = "visual" | "overlay" | "image";
 
 type Phase = { kind: "form" } | { kind: "running"; done: number; total: number; label: string } | { kind: "done"; files: ExportFile[] };
 
@@ -66,8 +69,8 @@ function ExportDialogInner() {
   );
   const [included, setIncluded] = useState<Record<string, boolean>>(() => Object.fromEntries(docOrder.map((id) => [id, true])));
   const [mode, setMode] = useState<"separate" | "merge">("separate");
-  const [mergedName, setMergedName] = useState(`結合_墨消し済_${stamp()}.pdf`);
-  const [rasterize, setRasterize] = useState(false);
+  const [mergedName, setMergedName] = useState(`結合_加工済_${stamp()}.pdf`);
+  const [method, setMethod] = useState<Method>("visual");
   const [flatten, setFlatten] = useState(true);
   const [stripMetadata, setStripMetadata] = useState(true);
   const [stripExtras, setStripExtras] = useState(true);
@@ -143,7 +146,8 @@ function ExportDialogInner() {
       options: {
         mode,
         mergedName: ensurePdf(mergedName),
-        rasterize,
+        rasterize: method === "image",
+        keepText: method === "overlay",
         rasterDpi: 200,
         flatten,
         stripMetadata,
@@ -224,24 +228,40 @@ function ExportDialogInner() {
 
               <section className="ex-section">
                 <h3>
-                  <IconShield size={16} /> 墨消しの方式
+                  <IconShield size={16} /> 仕上がり
                 </h3>
-                <div className="choice-cards">
-                  <label className={"choice" + (!rasterize ? " on" : "")}>
-                    <input type="radio" checked={!rasterize} onChange={() => setRasterize(false)} />
-                    <b>標準（おすすめ）</b>
-                    <span>隠した部分の文字・画像・図形だけを完全に削除。ほかの文字は検索・コピーできるまま。</span>
+                <p className="muted small">
+                  どれを選んでも、モザイク・ぼかしの程度や塗りは<b>画面で加工したとおりの見た目</b>で書き出されます。違いは、隠した部分の下にある元の文字データの扱いです。
+                </p>
+                <div className="choice-cards three">
+                  <label className={"choice" + (method === "visual" ? " on" : "")}>
+                    <input type="radio" checked={method === "visual"} onChange={() => setMethod("visual")} />
+                    <b>加工したとおり（おすすめ）</b>
+                    <span>見た目は画面のまま。隠した部分の下の元の文字データだけを消すので、コピーや検索でも読めません。</span>
                   </label>
-                  <label className={"choice" + (rasterize ? " on" : "")}>
-                    <input type="radio" checked={rasterize} onChange={() => setRasterize(true)} />
-                    <b>全ページを画像化</b>
+                  <label className={"choice" + (method === "overlay" ? " on warn" : "")}>
+                    <input type="radio" checked={method === "overlay"} onChange={() => setMethod("overlay")} />
+                    <b>見た目だけ重ねる</b>
+                    <span>加工を上に重ねるだけ。元の文字データは残るので、コピーや検索で読めてしまいます。</span>
+                  </label>
+                  <label className={"choice" + (method === "image" ? " on" : "")}>
+                    <input type="radio" checked={method === "image"} onChange={() => setMethod("image")} />
+                    <b>全ページを画像にする</b>
                     <span>最も安全。文字情報は一切残りません（検索・コピー不可、容量は増えます）。</span>
                   </label>
                 </div>
+                {method === "overlay" && (
+                  <div className="note warn">
+                    <IconAlert size={15} />
+                    <span>
+                      隠した数字は見た目では読みにくくなりますが、PDFの中には残ります。社外に渡す資料では「加工したとおり」を選んでください。
+                    </span>
+                  </div>
+                )}
                 <div className="checks">
                   <label>
                     <input type="checkbox" checked={flatten} onChange={(e) => setFlatten(e.target.checked)} />
-                    注釈・フォームを平坦化してから墨消し<span className="muted">（注釈内の数字の取りこぼし防止）</span>
+                    注釈・フォームを平坦化<span className="muted">（注釈内の数字の取りこぼし防止）</span>
                   </label>
                   <label>
                     <input type="checkbox" checked={stripMetadata} onChange={(e) => setStripMetadata(e.target.checked)} />
@@ -368,7 +388,7 @@ function ExportDialogInner() {
               </button>
               <button className="btn primary" disabled={errors.length > 0} onClick={start}>
                 <IconDownload size={16} />
-                {totalMasks > 0 ? `${totalMasks}件を墨消しして書き出す` : "書き出す"}
+                {totalMasks > 0 ? `${totalMasks}件の加工を反映して書き出す` : "書き出す"}
               </button>
             </div>
           </>
@@ -429,16 +449,19 @@ function saveAll(files: ExportFile[]) {
 
 function Report({ files }: { files: ExportFile[] }) {
   const allPassed = files.every((f) => f.report.passed);
+  const kept = files.some((f) => f.report.textKept);
   return (
     <div className="report">
       <div className={"report-banner " + (allPassed ? "ok" : "ng")}>
         {allPassed ? <IconShield size={28} /> : <IconAlert size={28} />}
         <div>
-          <b>{allPassed ? "検証に合格しました" : "確認が必要な項目があります"}</b>
+          <b>{!allPassed ? "確認が必要な項目があります" : kept ? "書き出しました" : "検証に合格しました"}</b>
           <span>
-            {allPassed
-              ? "隠した部分に文字は残っておらず、それ以外の見た目も元のままです。"
-              : "下の項目を確認してください。心配な場合は「全ページを画像化」で書き出し直すと確実です。"}
+            {!allPassed
+              ? "下の項目を確認してください。心配な場合は「全ページを画像にする」で書き出し直すと確実です。"
+              : kept
+                ? "見た目は画面で加工したとおりです。「見た目だけ重ねる」設定のため、元の文字データは残しています。"
+                : "見た目は画面で加工したとおりで、隠した部分の下に文字は残っていません。"}
           </span>
         </div>
       </div>
@@ -457,9 +480,15 @@ function Report({ files }: { files: ExportFile[] }) {
               </button>
             </div>
             <ul className="checklist">
-              <Check ok={r.leakedChars === 0} label="隠した部分に残っている文字">
-                {r.leakedChars === 0 ? "0文字" : `${r.leakedChars}文字（${r.leakedSamples.join("、")}）`}
-              </Check>
+              {r.textKept ? (
+                <Check ok info label="隠した部分の元の文字データ">
+                  残しています（見た目だけ重ねる設定）
+                </Check>
+              ) : (
+                <Check ok={r.leakedChars === 0} label="隠した部分に残っている文字">
+                  {r.leakedChars === 0 ? "0文字" : `${r.leakedChars}文字（${r.leakedSamples.join("、")}）`}
+                </Check>
+              )}
               <Check ok={r.pixelDiffPercent < 0.5} label="隠した部分以外の見た目の変化">
                 {r.pixelDiffPercent.toFixed(3)}%{r.diffPages.length ? `（${r.diffPages.join("・")}ページ）` : ""}
               </Check>
@@ -495,10 +524,10 @@ function Report({ files }: { files: ExportFile[] }) {
   );
 }
 
-function Check({ ok, label, children }: { ok: boolean; label: string; children: React.ReactNode }) {
+function Check({ ok, info, label, children }: { ok: boolean; info?: boolean; label: string; children: React.ReactNode }) {
   return (
-    <li className={ok ? "ok" : "ng"}>
-      {ok ? <IconCheck size={15} /> : <IconAlert size={15} />}
+    <li className={info ? "info" : ok ? "ok" : "ng"}>
+      {info ? <IconLayers size={15} /> : ok ? <IconCheck size={15} /> : <IconAlert size={15} />}
       <span className="check-label">{label}</span>
       <span className="check-value">{children}</span>
     </li>

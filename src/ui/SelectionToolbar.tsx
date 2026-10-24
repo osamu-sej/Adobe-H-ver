@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { autoStrength, MAX_STRENGTH, MIN_STRENGTH } from "../fx/effects";
+import { MAX_STRENGTH, MIN_STRENGTH, resolveStrength } from "../fx/effects";
 import { suggestForSelection } from "../model/actions";
 import { beginGesture, deleteMasks, endGesture, updateGesture, updateMasks, useStore } from "../model/store";
-import { STYLE_LABEL, STYLE_ORDER, type MaskStyle } from "../model/types";
+import { LEVEL_HINT, LEVEL_LABEL, LEVEL_ORDER, STYLE_LABEL, STYLE_ORDER, type MaskStyle } from "../model/types";
 import { IconBlack, IconBlur, IconMosaic, IconSlider, IconTag, IconTrash, IconWand, IconWhite } from "./icons";
+import { setLevel } from "./TopBar";
 
 export const STYLE_ICON: Record<MaskStyle, (p: { size?: number }) => React.ReactElement> = {
   mosaic: IconMosaic,
@@ -23,8 +24,9 @@ export function SelectionToolbar({ left, top, below }: { left: number; top: numb
   const styles = new Set(selected.map((m) => m.style));
   const one = <T,>(vals: T[]): T | undefined => (vals.every((v) => v === vals[0]) ? vals[0] : undefined);
   const strength = one(selected.map((m) => m.strength));
+  const level = one(selected.map((m) => m.level));
   const label = one(selected.map((m) => m.label));
-  const autoValue = autoStrength(selected[0]);
+  const current = resolveStrength(selected[0]);
   const showStrength = selected.some((m) => m.style === "mosaic" || m.style === "blur");
 
   const setStyle = (style: MaskStyle) => {
@@ -57,24 +59,39 @@ export function SelectionToolbar({ left, top, below }: { left: number; top: numb
       </div>
       <span className="sel-sep" />
       {showStrength && (
+        <div className="seg" role="radiogroup" aria-label="程度">
+          {LEVEL_ORDER.map((l) => (
+            <button
+              key={l}
+              role="radio"
+              aria-checked={strength === null && level === l}
+              className={"tb-btn level" + (strength === null && level === l ? " active" : "")}
+              title={`${LEVEL_LABEL[l]}：${LEVEL_HINT[l]}（[ と ] で切替）`}
+              onClick={() => setLevel(l)}
+            >
+              {LEVEL_LABEL[l]}
+            </button>
+          ))}
+        </div>
+      )}
+      {showStrength && (
         <div className="pop-anchor">
           <button
-            className={"tb-btn wide" + (open === "strength" ? " active" : "")}
-            title="強さ（[ と ] でも調整）"
+            className={"tb-btn" + (open === "strength" || strength ? " active" : "")}
+            title={strength ? `細かく調整中（${strength.toFixed(1)}pt）` : "細かく調整する"}
             onClick={() => setOpen(open === "strength" ? null : "strength")}
           >
             <IconSlider size={16} />
-            <span>{strength === undefined ? "混在" : strength === null ? "自動" : `${strength}pt`}</span>
           </button>
           {open === "strength" && (
             <div className="popover">
-              <div className="pop-title">モザイクの粗さ・ぼかしの強さ</div>
+              <div className="pop-title">モザイクの粗さ・ぼかしの強さを細かく調整</div>
               <input
                 type="range"
                 min={MIN_STRENGTH}
                 max={MAX_STRENGTH}
-                step={0.5}
-                value={strength ?? autoValue}
+                step={0.1}
+                value={strength ?? current}
                 onPointerDown={() => beginGesture()}
                 onPointerUp={() => endGesture()}
                 onKeyDown={() => beginGesture()}
@@ -88,7 +105,7 @@ export function SelectionToolbar({ left, top, below }: { left: number; top: numb
                 }}
               />
               <div className="pop-row">
-                <span className="muted">{(strength ?? autoValue).toFixed(1)}pt</span>
+                <span className="muted">{(strength ?? current).toFixed(1)}pt</span>
                 <button
                   className={"chip" + (strength === null ? " on" : "")}
                   onClick={() => {
@@ -96,7 +113,7 @@ export function SelectionToolbar({ left, top, below }: { left: number; top: numb
                     useStore.setState({ strength: null });
                   }}
                 >
-                  自動（文字高の半分以上）
+                  弱・中・強に戻す
                 </button>
               </div>
             </div>
@@ -106,7 +123,7 @@ export function SelectionToolbar({ left, top, below }: { left: number; top: numb
       <div className="pop-anchor">
         <button
           className={"tb-btn wide" + (open === "label" ? " active" : "")}
-          title="墨消しの上に文言を重ねる"
+          title="マスクの上に文言を重ねる"
           onClick={() => setOpen(open === "label" ? null : "label")}
         >
           <IconTag size={16} />

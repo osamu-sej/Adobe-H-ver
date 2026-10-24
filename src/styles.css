@@ -183,11 +183,33 @@ kbd {
 
 .seg {
   display: flex;
+  align-items: center;
   background: var(--bg-2);
   border: 1px solid var(--line);
   border-radius: 9px;
   padding: 2px;
   gap: 2px;
+}
+.seg-label {
+  padding: 0 4px 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.seg.off {
+  opacity: 0.45;
+}
+.seg.levels .tb-btn,
+.tb-btn.level {
+  min-width: 30px;
+  padding: 0 7px;
+  font-weight: 700;
+}
+.seg.levels .tb-btn.active,
+.sel-toolbar .tb-btn.level.active {
+  color: var(--accent);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 1.5px var(--accent);
 }
 .tb-btn {
   display: inline-flex;
@@ -406,7 +428,7 @@ kbd {
   margin-right: -4px;
 }
 
-@media (max-width: 1380px) {
+@media (max-width: 1560px) {
   .seg.styles .lbl {
     display: none;
   }
@@ -1408,6 +1430,30 @@ input[type="radio"] {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
+.choice-cards.three {
+  grid-template-columns: repeat(3, 1fr);
+}
+.choice.on.warn {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+}
+.note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.note svg {
+  flex: none;
+  margin-top: 2px;
+}
+.note.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
 .choice span {
   color: var(--text-2);
   font-size: 12px;
@@ -1564,6 +1610,9 @@ input[type="radio"] {
 }
 .checklist > li.ok > svg {
   color: var(--ok);
+}
+.checklist > li.info > svg {
+  color: var(--text-2);
 }
 .checklist > li.ng,
 .checklist > li.warn {
