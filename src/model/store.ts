@@ -85,6 +85,7 @@ interface AppState extends Snapshot {
   passwordRequest: PasswordRequest | null;
   exportOpen: boolean;
   helpOpen: boolean;
+  safetyOpen: boolean;
   loading: { name: string; done: number; total: number } | null;
   exportedAt: number | null;
   editedAt: number;
@@ -124,6 +125,7 @@ export const useStore = create<AppState>(() => ({
   passwordRequest: null,
   exportOpen: false,
   helpOpen: false,
+  safetyOpen: false,
   loading: null,
   exportedAt: null,
   editedAt: 0,

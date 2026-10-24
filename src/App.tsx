@@ -17,7 +17,7 @@ import {
 import { STYLE_ORDER, type SnapMode, type Tool } from "./model/types";
 import { ContextMenu } from "./ui/ContextMenu";
 import { ExportDialog } from "./ui/ExportDialog";
-import { DropOverlay, EmptyState, HelpOverlay, PasswordDialog, StatusBar, SuggestionBar, Toasts } from "./ui/Overlays";
+import { DropOverlay, EmptyState, HelpOverlay, PasswordDialog, SafetyDialog, StatusBar, SuggestionBar, Toasts } from "./ui/Overlays";
 import { focusSearch, SidePanel } from "./ui/SidePanel";
 import { Sidebar } from "./ui/Sidebar";
 import { setStyle, stepLevel, toggleFullscreen, TopBar } from "./ui/TopBar";
@@ -54,7 +54,7 @@ function handleKeyDown(e: KeyboardEvent, openPicker: () => void) {
     setTimeout(() => focusSearch.current(), 0);
     return;
   }
-  if (isTyping(e) || s.exportOpen || s.passwordRequest) return;
+  if (isTyping(e) || s.exportOpen || s.passwordRequest || s.safetyOpen) return;
   if (s.helpOpen) {
     if (e.key === "Escape" || e.key === "?") useStore.setState({ helpOpen: false });
     return;
@@ -307,6 +307,7 @@ export function App() {
       <ExportDialog />
       <PasswordDialog />
       <HelpOverlay />
+      <SafetyDialog />
       <ContextMenu />
       <DropOverlay active={dragging} />
       <input
