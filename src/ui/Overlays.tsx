@@ -206,9 +206,14 @@ export function HelpOverlay() {
           <span className="muted small">
             <IconShield size={13} /> PDFはこの端末の中だけで処理され、外部には送信されません。
           </span>
-          <button className="btn ghost sm" onClick={() => useStore.setState({ helpOpen: false, safetyOpen: true })}>
-            安全性について
-          </button>
+          <div className="foot-actions">
+            <a className="btn ghost sm" href="manual/" target="_blank" rel="noopener">
+              使い方ガイド（動画つき）
+            </a>
+            <button className="btn ghost sm" onClick={() => useStore.setState({ helpOpen: false, safetyOpen: true })}>
+              安全性について
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -375,6 +380,9 @@ export function EmptyState({ onOpen }: { onOpen: () => void }) {
             <span>文字ごと完全に削除し、残っていないか自動で検証</span>
           </li>
         </ol>
+        <a className="manual-link" href="manual/" target="_blank" rel="noopener">
+          使い方ガイドを見る（動画とお試しつき）→
+        </a>
       </div>
     </div>
   );

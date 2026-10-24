@@ -1,0 +1,1826 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+<title>カクス 使い方ガイド</title>
+<meta name="description" content="PDFの見せられない部分を、なぞるだけで隠すツール「カクス」の使い方。実際の画面と動画、その場で試せるお試しエリア付き。" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Crect width='9' height='9' rx='2' fill='%231d1d24'/%3E%3Crect x='11' width='9' height='9' rx='2' fill='%23e8492a'/%3E%3Crect y='11' width='9' height='9' rx='2' fill='%231d1d24' opacity='.45'/%3E%3Crect x='11' y='11' width='9' height='9' rx='2' fill='%231d1d24'/%3E%3C/svg%3E" />
+<style>
+:root {
+  --bg: #fbfbfc;
+  --surface: #ffffff;
+  --bg-2: #f3f3f5;
+  --bg-3: #ececf0;
+  --line: #e4e4e8;
+  --line-2: #d3d3d9;
+  --text: #1d1d24;
+  --text-2: #4a4a55;
+  --muted: #777784;
+  --accent: #e8492a;
+  --accent-2: #c93a1e;
+  --accent-soft: #fdece7;
+  --ok: #1f8f4e;
+  --ok-soft: #e6f5ec;
+  --warn: #b25e00;
+  --warn-soft: #fff3e0;
+  --shadow: 0 1px 2px rgba(15, 15, 25, 0.06), 0 8px 28px rgba(15, 15, 25, 0.08);
+  --shadow-lg: 0 2px 6px rgba(15, 15, 25, 0.08), 0 24px 60px rgba(15, 15, 25, 0.14);
+  --radius: 14px;
+  --font: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", "Yu Gothic", Meiryo, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #131317;
+    --surface: #1b1b20;
+    --bg-2: #222228;
+    --bg-3: #2a2a31;
+    --line: #2e2e36;
+    --line-2: #3c3c46;
+    --text: #ececf1;
+    --text-2: #c4c4cd;
+    --muted: #8f8f9b;
+    --accent: #ff5a36;
+    --accent-2: #ff7a5c;
+    --accent-soft: #3a1f19;
+    --ok: #4cc47e;
+    --ok-soft: #173023;
+    --warn: #f0a24a;
+    --warn-soft: #33260f;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.5), 0 24px 60px rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #131317;
+  --surface: #1b1b20;
+  --bg-2: #222228;
+  --bg-3: #2a2a31;
+  --line: #2e2e36;
+  --line-2: #3c3c46;
+  --text: #ececf1;
+  --text-2: #c4c4cd;
+  --muted: #8f8f9b;
+  --accent: #ff5a36;
+  --accent-2: #ff7a5c;
+  --accent-soft: #3a1f19;
+  --ok: #4cc47e;
+  --ok-soft: #173023;
+  --warn: #f0a24a;
+  --warn-soft: #33260f;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.5), 0 24px 60px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 76px; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+}
+img, video { max-width: 100%; height: auto; display: block; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { font: inherit; color: inherit; cursor: pointer; }
+h1, h2, h3, h4 { line-height: 1.35; margin: 0; letter-spacing: 0.01em; }
+p { margin: 0; }
+kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.9em;
+  height: 1.75em;
+  padding: 0 0.45em;
+  border-radius: 6px;
+  border: 1px solid var(--line-2);
+  border-bottom-width: 2px;
+  background: var(--surface);
+  color: var(--text);
+  font: 600 0.82em/1 var(--font);
+  white-space: nowrap;
+  vertical-align: 0.08em;
+}
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+svg.i { width: 1.15em; height: 1.15em; flex: none; vertical-align: -0.2em; }
+
+/* ---------- ヘッダー ---------- */
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 20px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: saturate(1.6) blur(12px);
+  -webkit-backdrop-filter: saturate(1.6) blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 10px; color: var(--text); font-weight: 800; letter-spacing: 0.08em; }
+.brand:hover { text-decoration: none; }
+.mark { display: grid; grid-template-columns: 10px 10px; gap: 2px; }
+.mark i { width: 10px; height: 10px; border-radius: 2.5px; background: var(--text); }
+.mark i:nth-child(2) { background: var(--accent); }
+.mark i:nth-child(3) { opacity: 0.45; }
+.brand small { font-weight: 600; color: var(--muted); letter-spacing: 0.02em; font-size: 13px; }
+.top .spacer { flex: 1; }
+.progress { position: absolute; left: 0; bottom: -1px; height: 2px; width: 0; background: var(--accent); transition: width 0.1s linear; }
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 18px;
+  border-radius: 10px;
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 700;
+  font-size: 14.5px;
+  white-space: nowrap;
+  transition: transform 0.12s, box-shadow 0.12s, background 0.12s;
+}
+.btn:hover { text-decoration: none; transform: translateY(-1px); box-shadow: var(--shadow); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+.btn.lg { height: 50px; padding: 0 24px; font-size: 16px; border-radius: 12px; }
+.btn.sm { height: 34px; padding: 0 12px; font-size: 13px; }
+.menu-btn { display: none; width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); align-items: center; justify-content: center; }
+
+/* ---------- レイアウト ---------- */
+.layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 48px; max-width: 1240px; margin: 0 auto; padding: 0 28px; }
+.toc { position: sticky; top: 84px; align-self: start; max-height: calc(100vh - 100px); overflow: auto; padding: 18px 0 40px; }
+.toc p { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: 0.06em; margin: 0 0 8px 10px; }
+.toc a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.toc a:hover { background: var(--bg-2); text-decoration: none; }
+.toc a.on { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.toc a b { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; background: var(--bg-2); color: var(--muted); font-size: 12px; flex: none; }
+.toc a.on b { background: var(--accent); color: #fff; }
+.toc hr { border: 0; border-top: 1px solid var(--line); margin: 10px 10px; }
+main { min-width: 0; padding-bottom: 80px; }
+
+section { padding: 64px 0 8px; }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 800; color: var(--accent); letter-spacing: 0.08em; margin-bottom: 10px; }
+.eyebrow b { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 14px; letter-spacing: 0; }
+h2 { font-size: clamp(24px, 3.2vw, 32px); font-weight: 800; margin-bottom: 12px; }
+h3 { font-size: 19px; font-weight: 800; margin: 36px 0 12px; }
+.lead { font-size: 17px; color: var(--text-2); max-width: 42em; }
+.muted { color: var(--muted); }
+.small { font-size: 13.5px; }
+
+/* ---------- ヒーロー ---------- */
+.hero {
+  padding: 56px 0 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: 40px;
+  align-items: center;
+}
+.hero h1 { font-size: clamp(28px, 2.6vw, 40px); font-weight: 900; letter-spacing: 0.01em; margin: 6px 0 16px; }
+.hero h1 span { display: inline-block; white-space: nowrap; }
+.hero h1 em { font-style: normal; background: linear-gradient(transparent 62%, color-mix(in srgb, var(--accent) 28%, transparent) 62%); }
+.hero .lead { margin-bottom: 26px; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 22px; }
+.safe-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--ok-soft);
+  color: var(--ok);
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+/* 画面の枠 */
+.frame {
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  position: relative;
+}
+.frame-bar { height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 12px; background: var(--bg-2); border-bottom: 1px solid var(--line); }
+.frame-bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--line-2); }
+.frame-bar span { margin-left: 10px; font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.frame video, .frame img { width: 100%; height: auto; background: #f5f5f7; }
+.vid { position: relative; cursor: pointer; }
+.vid .play {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(20, 20, 28, 0.78);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.vid.paused .play { opacity: 1; }
+
+/* ---------- クイックスタート ---------- */
+.steps3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 24px; counter-reset: s; }
+.step3 {
+  position: relative;
+  padding: 22px 20px 20px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  transition: transform 0.15s, border-color 0.15s;
+}
+.step3:hover { transform: translateY(-3px); border-color: var(--accent); text-decoration: none; }
+.step3 .n { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--accent); color: #fff; font-weight: 900; font-size: 17px; margin-bottom: 12px; }
+.step3 h3 { margin: 0 0 6px; font-size: 18px; }
+.step3 p { color: var(--text-2); font-size: 14.5px; line-height: 1.7; }
+.step3 .k { margin-top: 12px; font-size: 13px; color: var(--muted); }
+.step3::after { content: "→"; position: absolute; right: -14px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--bg); border: 1px solid var(--line); color: var(--muted); font-size: 14px; z-index: 1; }
+.step3:last-child::after { display: none; }
+
+/* ---------- お試しエリア ---------- */
+.try { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 20px; margin-top: 22px; align-items: start; }
+.sb { border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-lg); overflow: hidden; outline: none; }
+.sb:focus-visible { box-shadow: var(--shadow-lg), 0 0 0 3px color-mix(in srgb, var(--accent) 40%, transparent); }
+.sb-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; background: var(--bg-2); border-bottom: 1px solid var(--line); }
+.seg { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); }
+.seg > span { font-size: 11.5px; font-weight: 700; color: var(--muted); padding: 0 6px 0 8px; }
+.seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.seg button:hover { background: var(--bg-2); }
+.seg button.on { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.sb-fill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); }
+.sb-fill[hidden] { display: none; }
+.sb-fill > span { font-size: 11.5px; font-weight: 700; color: var(--muted); }
+.sw { width: 24px; height: 24px; border-radius: 7px; border: 0; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18); padding: 0; }
+.sw.on { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18), 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.sb-fill input[type="range"] { width: 92px; accent-color: var(--accent); }
+.sb-fill output { font-size: 12px; font-weight: 700; color: var(--text-2); min-width: 3.6em; }
+.sb-tools { display: inline-flex; gap: 6px; margin-left: auto; }
+.chipbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-2);
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+.chipbtn:hover { border-color: var(--accent); color: var(--accent); }
+.chipbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sb-stage { position: relative; background: var(--bg-3); padding: 18px; }
+.sb-paper { position: relative; margin: 0 auto; max-width: 640px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.08); background: #fff; }
+.sb-paper canvas { display: block; width: 100%; height: auto; touch-action: none; cursor: crosshair; }
+.sb-layer { position: absolute; inset: 0; pointer-events: none; }
+.sb-hover { position: absolute; border-radius: 3px; background: rgba(232, 73, 42, 0.16); box-shadow: inset 0 0 0 1.5px rgba(232, 73, 42, 0.55); }
+.sb-rubber { position: absolute; border: 1.5px dashed var(--accent); background: rgba(232, 73, 42, 0.07); border-radius: 2px; }
+.sb-sel { position: absolute; outline: 2px solid #e8492a; outline-offset: 1px; border-radius: 2px; }
+.sb-sel button {
+  position: absolute;
+  right: -11px;
+  top: -13px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 0;
+  background: #e8492a;
+  color: #fff;
+  font-size: 13px;
+  line-height: 22px;
+  padding: 0;
+  pointer-events: auto;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+.sb-coach {
+  position: absolute;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: #1d1d24;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  animation: bob 1.4s ease-in-out infinite;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+}
+.sb-coach::after { content: ""; position: absolute; left: 50%; bottom: -6px; margin-left: -6px; border: 6px solid transparent; border-bottom: 0; border-top-color: #1d1d24; }
+.sb-coach[hidden] { display: none; }
+@keyframes bob { 50% { transform: translate(-50%, calc(-100% - 6px)); } }
+.sb-peekbadge { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); padding: 5px 12px; border-radius: 999px; background: rgba(20, 20, 28, 0.82); color: #fff; font-size: 12.5px; font-weight: 700; pointer-events: none; }
+.sb-peekbadge[hidden] { display: none; }
+.sb-status { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); min-height: 40px; }
+.sb-status b { color: var(--text); }
+.sb-status .count { margin-left: auto; white-space: nowrap; }
+
+.missions { border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); padding: 18px; position: sticky; top: 84px; }
+.missions h3 { margin: 0 0 4px; font-size: 16px; }
+.missions > p { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+.missions ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.missions li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 10px; font-size: 13.5px; line-height: 1.5; color: var(--text-2); transition: background 0.3s; }
+.missions li i {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--line-2);
+  display: grid;
+  place-items: center;
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 900;
+  color: transparent;
+  transition: all 0.25s;
+}
+.missions li.done { background: var(--ok-soft); color: var(--text); }
+.missions li.done i { background: var(--ok); border-color: var(--ok); color: #fff; transform: scale(1.08); }
+.missions li.next { background: var(--bg-2); }
+.missions li.next i { border-color: var(--accent); }
+.meter { height: 6px; border-radius: 3px; background: var(--bg-2); overflow: hidden; margin: 14px 0 0; }
+.meter i { display: block; height: 100%; width: 0; background: var(--ok); transition: width 0.4s; }
+.m-done { margin-top: 14px; padding: 14px; border-radius: 12px; background: var(--accent-soft); text-align: center; }
+.m-done[hidden] { display: none; }
+.m-done b { display: block; font-size: 15px; margin-bottom: 8px; }
+
+/* ---------- 画面の見かた ---------- */
+.anatomy { margin-top: 22px; }
+.anatomy .shot { position: relative; }
+.hs {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 2;
+  transition: transform 0.15s;
+}
+.hs::before { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; animation: ping 2.2s ease-out infinite; }
+@keyframes ping { 0% { transform: scale(0.7); opacity: 0.8; } 70%, 100% { transform: scale(1.5); opacity: 0; } }
+.hs:hover, .hs.on { transform: scale(1.18); background: var(--text); }
+.hs-box { position: absolute; border-radius: 8px; box-shadow: 0 0 0 3px var(--accent), 0 0 0 9999px rgba(15, 15, 25, 0.38); pointer-events: none; transition: all 0.25s; opacity: 0; z-index: 1; }
+.hs-box.on { opacity: 1; }
+.hs-tip {
+  position: absolute;
+  z-index: 3;
+  width: min(300px, 70%);
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  font-size: 13.5px;
+  line-height: 1.6;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.15s, transform 0.15s;
+}
+.hs-tip.on { opacity: 1; transform: none; }
+.hs-tip b { display: block; font-size: 14.5px; margin-bottom: 2px; }
+.parts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 18px 0 0; padding: 0; list-style: none; }
+.parts li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 11px; border: 1px solid var(--line); background: var(--surface); font-size: 14px; line-height: 1.55; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.parts li:hover, .parts li.on { border-color: var(--accent); background: var(--accent-soft); }
+.parts li > b { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12.5px; }
+.parts li span b { display: block; }
+.parts li span small { color: var(--muted); font-size: 13px; }
+
+/* ---------- 汎用ブロック ---------- */
+.split { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 28px; align-items: start; margin-top: 22px; }
+.split.rev { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); }
+.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+.card { padding: 18px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
+.card h4 { font-size: 16px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+.card p { font-size: 14px; color: var(--text-2); line-height: 1.7; }
+.card .how { margin-top: 10px; font-size: 13px; color: var(--muted); }
+.ico { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); flex: none; }
+.ico svg { width: 19px; height: 19px; }
+.howto { counter-reset: h; list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.howto li { counter-increment: h; position: relative; padding: 0 0 0 42px; font-size: 15px; line-height: 1.7; color: var(--text-2); }
+.howto li::before { content: counter(h); position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 50%; background: var(--text); color: var(--bg); font-weight: 800; font-size: 14px; display: grid; place-items: center; }
+.howto li b { color: var(--text); }
+.note { display: flex; gap: 12px; padding: 14px 16px; border-radius: 12px; background: var(--bg-2); font-size: 14px; line-height: 1.7; color: var(--text-2); margin-top: 18px; }
+.note.ok { background: var(--ok-soft); }
+.note.warn { background: var(--warn-soft); }
+.note .ni { flex: none; font-size: 18px; line-height: 1.3; }
+.note b { color: var(--text); }
+.cap { margin-top: 10px; font-size: 13px; color: var(--muted); text-align: center; }
+
+/* タブ（吸着・仕上がり） */
+.tabs { display: inline-flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--bg-2); border: 1px solid var(--line); margin-bottom: 14px; flex-wrap: wrap; }
+.tabs button { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border: 0; border-radius: 9px; background: transparent; font-weight: 700; font-size: 14px; color: var(--text-2); }
+.tabs button.on { background: var(--surface); color: var(--accent); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.tabpane { display: none; }
+.tabpane.on { display: block; animation: fadein 0.25s; }
+@keyframes fadein { from { opacity: 0; transform: translateY(4px); } }
+.crop { border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: #fff; }
+.crop img { width: 100%; }
+
+/* 程度の比較 */
+.levels { display: grid; grid-template-columns: 92px repeat(3, minmax(0, 1fr)); gap: 10px; align-items: center; margin-top: 16px; }
+.levels .hd { font-weight: 800; text-align: center; font-size: 15px; }
+.levels .hd small { display: block; font-weight: 600; font-size: 12px; color: var(--muted); }
+.levels .rl { font-weight: 800; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+.levels .cell { border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #fff; }
+.levels .cell img { width: 100%; image-rendering: auto; }
+.orig { display: flex; align-items: center; gap: 12px; margin-top: 12px; font-size: 13.5px; color: var(--muted); }
+.orig .cell { width: 200px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #fff; }
+
+/* 塗りの例 */
+.fills { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.fills figure { margin: 0; }
+.fills .cell { border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #fff; }
+.fills figcaption { font-size: 12.5px; text-align: center; margin-top: 6px; color: var(--text-2); line-height: 1.45; }
+.fills figcaption small { display: block; color: var(--muted); }
+
+/* 書き出しの選び方 */
+.pick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.pick button {
+  text-align: left;
+  padding: 16px;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+}
+.pick button:hover { transform: translateY(-2px); border-color: var(--line-2); }
+.pick button.on { border-color: var(--accent); background: var(--accent-soft); }
+.pick b { display: block; font-size: 15.5px; margin-bottom: 4px; }
+.pick span { display: block; font-size: 13.5px; color: var(--text-2); line-height: 1.6; }
+.pick em { display: inline-block; margin-top: 8px; font-style: normal; font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: var(--ok-soft); color: var(--ok); }
+.pick em.w { background: var(--warn-soft); color: var(--warn); }
+.pick-detail { margin-top: 12px; padding: 16px 18px; border-radius: 12px; background: var(--bg-2); font-size: 14.5px; line-height: 1.75; color: var(--text-2); }
+.pick-detail b { color: var(--text); }
+.meters { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: center; margin-top: 10px; font-size: 13px; }
+.meters i { display: block; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; position: relative; }
+.meters i::after { content: ""; position: absolute; inset: 0; width: var(--v); background: var(--accent); border-radius: 4px; transition: width 0.35s; }
+
+.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.checks li { display: flex; gap: 10px; font-size: 14.5px; line-height: 1.65; color: var(--text-2); }
+.checks li::before { content: "✓"; flex: none; width: 22px; height: 22px; margin-top: 2px; border-radius: 50%; background: var(--ok); color: #fff; font-weight: 900; font-size: 12px; display: grid; place-items: center; }
+.checks li b { color: var(--text); }
+
+/* プリセット */
+.presets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.presets span { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface); font-size: 13.5px; font-weight: 600; color: var(--text-2); }
+
+/* ショートカット */
+.keys { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 28px; margin-top: 18px; }
+.keys h4 { font-size: 14px; color: var(--muted); margin: 18px 0 6px; letter-spacing: 0.04em; }
+.krow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-radius: 9px; border-bottom: 1px solid var(--line); font-size: 14.5px; transition: background 0.2s; }
+.krow .kk { display: inline-flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; flex: none; }
+.krow.flash { background: var(--accent-soft); animation: flash 0.9s ease-out; }
+@keyframes flash { 0% { background: var(--accent); } }
+.krow.flash kbd { border-color: var(--accent); color: var(--accent); }
+.keyhint { display: inline-flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 13.5px; color: var(--muted); }
+.keyhint .live { min-width: 120px; padding: 4px 10px; border-radius: 8px; background: var(--bg-2); font-weight: 700; color: var(--text); text-align: center; }
+
+/* FAQ */
+.faq { margin-top: 18px; display: grid; gap: 10px; }
+.faq details { border-radius: 12px; border: 1px solid var(--line); background: var(--surface); overflow: hidden; }
+.faq summary { list-style: none; cursor: pointer; padding: 15px 48px 15px 18px; font-weight: 700; font-size: 15.5px; position: relative; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::before { content: "Q"; color: var(--accent); font-weight: 900; margin-right: 10px; }
+.faq summary::after { content: "+"; position: absolute; right: 18px; top: 50%; transform: translateY(-50%); font-size: 22px; font-weight: 400; color: var(--muted); transition: transform 0.2s; }
+.faq details[open] summary::after { transform: translateY(-50%) rotate(45deg); }
+.faq details > div { padding: 0 18px 16px 42px; font-size: 14.5px; line-height: 1.8; color: var(--text-2); }
+
+.cta {
+  margin-top: 72px;
+  padding: 40px 28px;
+  border-radius: 20px;
+  background: var(--text);
+  color: var(--bg);
+  text-align: center;
+}
+.cta h2 { color: var(--bg); }
+.cta p { color: color-mix(in srgb, var(--bg) 75%, transparent); margin-bottom: 22px; }
+footer { border-top: 1px solid var(--line); padding: 28px; text-align: center; font-size: 13px; color: var(--muted); }
+
+/* ---------- レスポンシブ ---------- */
+@media (max-width: 1080px) {
+  .layout { grid-template-columns: minmax(0, 1fr); padding: 0 20px; gap: 0; }
+  .toc {
+    position: fixed;
+    top: 60px;
+    left: 0;
+    right: 0;
+    max-height: calc(100vh - 60px);
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    box-shadow: var(--shadow-lg);
+    padding: 12px 16px 18px;
+    z-index: 40;
+    display: none;
+  }
+  .toc.open { display: block; }
+  .menu-btn { display: inline-flex; }
+  .try { grid-template-columns: minmax(0, 1fr); }
+  .missions { position: static; }
+}
+@media (max-width: 820px) {
+  .hero { grid-template-columns: minmax(0, 1fr); gap: 28px; padding-top: 36px; }
+  .split, .split.rev { grid-template-columns: minmax(0, 1fr); }
+  .cards, .pick { grid-template-columns: minmax(0, 1fr); }
+  .steps3 { grid-template-columns: minmax(0, 1fr); }
+  .step3::after { content: "↓"; right: 50%; top: auto; bottom: -14px; transform: translateX(50%); }
+  .keys { grid-template-columns: minmax(0, 1fr); }
+  .parts { grid-template-columns: minmax(0, 1fr); }
+  .fills { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .hs { width: 20px; height: 20px; margin: -10px 0 0 -10px; font-size: 11px; border-width: 1.5px; }
+  .hs-tip { display: none; }
+  .brand small { display: none; }
+}
+@media (max-width: 560px) {
+  .layout { padding: 0 16px; }
+  .top { padding: 0 12px; gap: 8px; }
+  .top .btn { padding: 0 12px; }
+  section { padding-top: 48px; }
+  .levels { grid-template-columns: 64px repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .levels .rl { font-size: 12.5px; }
+  .levels .hd { font-size: 14px; }
+  .levels .hd small { font-size: 10.5px; line-height: 1.4; }
+  .sb-stage { padding: 8px; }
+  .sb-tools { margin-left: 0; }
+  .orig .cell { width: 150px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  html { scroll-behavior: auto; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-mosaic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/><rect x="9" y="9" width="6" height="6" fill="currentColor" stroke="none"/><rect x="3" y="3" width="6" height="6" fill="currentColor" stroke="none" opacity=".45"/><rect x="15" y="15" width="6" height="6" fill="currentColor" stroke="none" opacity=".45"/></symbol>
+    <symbol id="i-blur" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5" opacity=".35"/><circle cx="12" cy="12" r="5.5" opacity=".65"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/></symbol>
+    <symbol id="i-fill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="7" width="18" height="10" rx="1.5"/><path d="M3 15.5V8.5A1.5 1.5 0 0 1 4.5 7H14v10H4.5A1.5 1.5 0 0 1 3 15.5z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-hash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 9h14M5 15h14M10 4L8 20M16 4l-2 16"/></symbol>
+    <symbol id="i-type" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></symbol>
+    <symbol id="i-crop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="5" width="14" height="14" rx="1" stroke-dasharray="3 2.5"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3.5 18.5V6a1.5 1.5 0 0 1 1.5-1.5h4l2 2.5h7a1.5 1.5 0 0 1 1.5 1.5V10"/><path d="M3.5 18.5l2.6-7.2A1.5 1.5 0 0 1 7.5 10.3H20a1 1 0 0 1 .95 1.3l-2.2 6.4a1.5 1.5 0 0 1-1.4 1H4"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.3-7.5 9.5-4.3-1.2-7.5-4.9-7.5-9.5V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></symbol>
+    <symbol id="i-pointer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M5 3l14 7-6 1.8L10.5 18z"/></symbol>
+    <symbol id="i-wand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 20L15 9M14 4v3M19 9h-3M17.5 5.5l-2 2M18 14v2M20 15h-4M8 4v2M9 5H7"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+    <symbol id="i-rot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4v5h-5"/><path d="M20.5 9A8.5 8.5 0 1 0 19 16"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></symbol>
+  </defs>
+</svg>
+
+<header class="top">
+  <button class="menu-btn" id="menuBtn" aria-label="目次" aria-expanded="false"><svg class="i"><use href="#i-menu"/></svg></button>
+  <a class="brand" href="#top" aria-label="カクス 使い方ガイド（先頭へ）">
+    <span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+    カクス <small>使い方ガイド</small>
+  </a>
+  <span class="spacer"></span>
+  <a class="btn primary" href="../">アプリを開く</a>
+  <span class="progress" id="progress"></span>
+</header>
+
+<div class="layout" id="top">
+  <nav class="toc" id="toc" aria-label="目次">
+    <p>目次</p>
+    <a href="#quick"><b>★</b>3ステップで完了</a>
+    <a href="#try"><b>▶</b>その場で試す</a>
+    <a href="#screen"><b>◎</b>画面の見かた</a>
+    <hr />
+    <a href="#open"><b>1</b>PDFを開く</a>
+    <a href="#hide"><b>2</b>なぞって隠す</a>
+    <a href="#style"><b>3</b>隠し方を選ぶ</a>
+    <a href="#bulk"><b>4</b>まとめて隠す</a>
+    <a href="#fix"><b>5</b>確認・修正する</a>
+    <a href="#pages"><b>6</b>ページを整える</a>
+    <a href="#export"><b>7</b>書き出す</a>
+    <hr />
+    <a href="#keys"><b>⌘</b>ショートカット</a>
+    <a href="#faq"><b>?</b>よくある質問</a>
+  </nav>
+
+  <main>
+    <!-- ヒーロー -->
+    <div class="hero">
+      <div>
+        <span class="eyebrow">カクス 使い方ガイド</span>
+        <h1><span>見せたくない数字を、</span><br /><span><em>なぞるだけ</em>で隠す。</span></h1>
+        <p class="lead">電話番号・金額・口座番号…。PDFの隠したい部分をクリックやドラッグで隠して、元の文字ごと消したPDFとして書き出せます。このページだけで使い方がひととおりわかります。</p>
+        <div class="hero-actions">
+          <a class="btn primary lg" href="../">アプリを開く</a>
+          <a class="btn lg" href="#try">まずはここで試す</a>
+        </div>
+        <span class="safe-pill"><svg class="i"><use href="#i-shield"/></svg>PDFは端末の外に送信されません</span>
+      </div>
+      <div class="frame vid" data-label="動画">
+        <div class="frame-bar"><i></i><i></i><i></i><span>範囲をなぞると、中の数字だけが隠れる</span></div>
+        <video src="video/drag.mp4" poster="video/drag.webp" muted loop playsinline preload="metadata" aria-label="範囲をドラッグして数字を隠す操作の動画"></video>
+        <span class="play">▶ クリックで再生</span>
+      </div>
+    </div>
+
+    <!-- クイックスタート -->
+    <section id="quick">
+      <span class="eyebrow">QUICK START</span>
+      <h2>3ステップで完了</h2>
+      <p class="lead">覚えることはこれだけです。各ステップを押すと詳しい説明に移動します。</p>
+      <div class="steps3">
+        <a class="step3" href="#open">
+          <span class="n">1</span>
+          <h3>開く</h3>
+          <p>PDFを画面にドロップ。10〜20ファイルをまとめて開いてもOK。</p>
+          <div class="k"><kbd>Ctrl</kbd> + <kbd>O</kbd> でも開けます</div>
+        </a>
+        <a class="step3" href="#hide">
+          <span class="n">2</span>
+          <h3>隠す</h3>
+          <p>数字はクリック、範囲はなぞるだけ。中の数字にピタッと吸着します。</p>
+          <div class="k">隠し方は <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> で切替</div>
+        </a>
+        <a class="step3" href="#export">
+          <span class="n">3</span>
+          <h3>書き出す</h3>
+          <p>「書き出す」を押すだけ。元の文字を消し、残っていないか自動で確認します。</p>
+          <div class="k"><kbd>Ctrl</kbd> + <kbd>S</kbd> でも書き出せます</div>
+        </a>
+      </div>
+    </section>
+
+    <!-- お試し -->
+    <section id="try">
+      <span class="eyebrow">TRY IT</span>
+      <h2>その場で試してみよう</h2>
+      <p class="lead">下の書類はお試し用です（架空のデータ）。アプリと同じ操作で隠せます。右のミッションを順にクリアすると、基本操作はマスターです。</p>
+      <div class="try">
+        <div class="sb" id="sandbox" tabindex="0" aria-label="お試しエリア。数字をクリックするかドラッグで隠せます">
+          <div class="sb-bar">
+            <div class="seg" data-group="style" role="radiogroup" aria-label="隠し方">
+              <button data-v="mosaic" class="on" title="モザイク（1）"><svg class="i"><use href="#i-mosaic"/></svg>モザイク</button>
+              <button data-v="blur" title="ぼかし（2）"><svg class="i"><use href="#i-blur"/></svg>ぼかし</button>
+              <button data-v="fill" title="塗りつぶし（3）"><svg class="i"><use href="#i-fill"/></svg>塗りつぶし</button>
+            </div>
+            <div class="seg" data-group="level" role="radiogroup" aria-label="程度">
+              <span>程度</span>
+              <button data-v="weak" title="弱：多少は推測できる程度">弱</button>
+              <button data-v="medium" title="中：うっすら判別できる程度">中</button>
+              <button data-v="strong" class="on" title="強：ほとんど読めない">強</button>
+            </div>
+            <div class="sb-fill" hidden>
+              <span>色</span>
+              <span class="sws"></span>
+              <span>透明度</span>
+              <input type="range" min="0" max="90" step="5" value="0" aria-label="透明度" />
+              <output>不透明</output>
+            </div>
+            <div class="seg" data-group="snap" role="radiogroup" aria-label="吸着">
+              <button data-v="digits" class="on" title="数字だけに吸着"><svg class="i"><use href="#i-hash"/></svg>数字</button>
+              <button data-v="text" title="数字以外の文字に吸着"><svg class="i"><use href="#i-type"/></svg>文字</button>
+              <button data-v="free" title="範囲そのまま"><svg class="i"><use href="#i-crop"/></svg>自由</button>
+            </div>
+            <div class="sb-tools">
+              <button class="chipbtn" id="sbPeek" title="押している間だけ原本を表示（P）"><svg class="i"><use href="#i-eye"/></svg>原本を見る</button>
+              <button class="chipbtn" id="sbReset" title="すべてのマスクを消す"><svg class="i"><use href="#i-undo"/></svg>リセット</button>
+            </div>
+          </div>
+          <div class="sb-stage">
+            <div class="sb-paper">
+              <canvas width="600" height="330" aria-hidden="true"></canvas>
+              <div class="sb-layer"></div>
+              <div class="sb-coach">この数字をクリック</div>
+              <div class="sb-peekbadge" hidden>原本を表示中</div>
+            </div>
+          </div>
+          <div class="sb-status"><span class="hint">数字をクリック、または範囲をドラッグ</span><span class="count">隠した数 <b>0</b></span></div>
+        </div>
+
+        <aside class="missions" aria-live="polite">
+          <h3>ミッション</h3>
+          <p>やってみると自動でチェックが付きます</p>
+          <ol>
+            <li data-m="click"><i>✓</i><span>電話番号を<b>クリック</b>して隠す</span></li>
+            <li data-m="drag"><i>✓</i><span>2行以上を<b>なぞって</b>まとめて隠す</span></li>
+            <li data-m="level"><i>✓</i><span>隠したマスクの程度を<b>「弱」</b>にしてみる</span></li>
+            <li data-m="blur"><i>✓</i><span>隠し方を<b>「ぼかし」</b>に変える</span></li>
+            <li data-m="fill"><i>✓</i><span><b>塗りつぶし</b>の色を変える</span></li>
+            <li data-m="peek"><i>✓</i><span><b>「原本を見る」</b>を押したままにする</span></li>
+          </ol>
+          <div class="meter"><i></i></div>
+          <div class="m-done" hidden>
+            <b>🎉 基本操作はマスターです！</b>
+            <a class="btn primary sm" href="../">本物のPDFでやってみる</a>
+          </div>
+        </aside>
+      </div>
+      <p class="small muted" style="margin-top:12px">ヒント：書類をクリックしたあとは、キーボードの <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>（隠し方）、<kbd>[</kbd><kbd>]</kbd>（程度）、<kbd>S</kbd>（吸着）、<kbd>Delete</kbd>（削除）、<kbd>P</kbd> 長押し（原本）も使えます。</p>
+    </section>
+
+    <!-- 画面の見かた -->
+    <section id="screen">
+      <span class="eyebrow">SCREEN</span>
+      <h2>画面の見かた</h2>
+      <p class="lead">番号にマウスを乗せる（タップする）と、その場所が光って説明が出ます。</p>
+      <div class="anatomy">
+        <div class="frame">
+          <div class="shot" id="shot">
+            <img src="img/overview.webp" width="2200" height="1291" alt="カクスの画面全体。上にツールバー、左にページ一覧、中央にPDF" />
+            <div class="hs-box" id="hsBox"></div>
+            <div class="hs-tip" id="hsTip"></div>
+          </div>
+        </div>
+        <ol class="parts" id="parts"></ol>
+      </div>
+    </section>
+
+    <!-- 1 開く -->
+    <section id="open">
+      <span class="eyebrow"><b>1</b>OPEN</span>
+      <h2>PDFを開く</h2>
+      <div class="split">
+        <div class="frame">
+          <div class="frame-bar"><i></i><i></i><i></i><span>最初の画面</span></div>
+          <img src="img/start.webp" width="1800" height="1056" alt="最初の画面。PDFを選ぶボタンとサンプルで試すボタン" loading="lazy" />
+        </div>
+        <div>
+          <ol class="howto">
+            <li><b>PDFを画面にドロップ</b>します。複数のファイルをまとめてドロップできます。</li>
+            <li>または <b>「PDFを選ぶ」</b>（<kbd>Ctrl</kbd>+<kbd>O</kbd>）からファイルを選びます。</li>
+            <li>まず触ってみたいときは <b>「サンプルで試す」</b>。架空の請求書で練習できます。</li>
+          </ol>
+          <div class="note"><span class="ni">🔑</span><span><b>パスワード付きPDF</b>も開けます。開くときにパスワードを聞かれます。</span></div>
+          <div class="note"><span class="ni">💾</span><span>作業は<b>自動で保存</b>されます。同じPDFを開き直すと「前回の作業が残っています → 復元する」が出ます（保存するのはマスクの位置だけ。PDF本体や隠した文字は保存しません）。</span></div>
+        </div>
+      </div>
+      <div class="note ok"><span class="ni">🛡️</span><span><b>PDFは端末の外に送信されません。</b>処理はすべてブラウザの中で行い、外部への通信はブラウザ側で禁止しています。ネットを切った状態でも使えます。</span></div>
+    </section>
+
+    <!-- 2 隠す -->
+    <section id="hide">
+      <span class="eyebrow"><b>2</b>HIDE</span>
+      <h2>なぞって隠す</h2>
+      <p class="lead">基本は「クリック」と「ドラッグ」の2つだけ。表をざっくりなぞっても、数字だけにピッタリ合わせて隠します。</p>
+      <div class="cards">
+        <div class="card">
+          <h4><span class="ico"><svg><use href="#i-pointer"/></svg></span>クリック</h4>
+          <p>数字のかたまりを1つ隠します。<b>03-1234-5678</b> のような区切り付きの番号もひとかたまり。</p>
+        </div>
+        <div class="card">
+          <h4><span class="ico"><svg><use href="#i-hash"/></svg></span>ドラッグ</h4>
+          <p>なぞった範囲の中の<b>数字だけ</b>に、行ごとに吸着して隠します。¥記号や表の罫線は残ります。</p>
+        </div>
+        <div class="card">
+          <h4><span class="ico"><svg><use href="#i-crop"/></svg></span><kbd>Alt</kbd>＋ドラッグ</h4>
+          <p>吸着せずに、<b>なぞった範囲そのまま</b>を隠します。印影や写真、スキャンしたページにも。</p>
+        </div>
+      </div>
+
+      <div class="split rev">
+        <div>
+          <h3 style="margin-top:0">動画で見る</h3>
+          <ol class="howto">
+            <li>電話番号のあたりを<b>ざっくりドラッグ</b> → 数字だけが隠れる</li>
+            <li>金額を<b>クリック</b> → そのかたまりだけが隠れる</li>
+            <li>作った直後のマスクは選択中。<kbd>Esc</kbd> で選択を外して次へ</li>
+          </ol>
+        </div>
+        <div class="frame vid">
+          <div class="frame-bar"><i></i><i></i><i></i><span>ドラッグとクリックで隠す</span></div>
+          <video src="video/drag.mp4" poster="video/drag.webp" muted loop playsinline preload="none" aria-label="ドラッグとクリックで隠す動画"></video>
+          <span class="play">▶ クリックで再生</span>
+        </div>
+      </div>
+
+      <h3>吸着モード：何に合わせて隠すか</h3>
+      <p class="muted small" style="margin-bottom:12px">上のバーの「数字・文字・自由」、または <kbd>S</kbd> キーで切り替えます。同じ範囲をなぞったときの違い：</p>
+      <div class="tabs" role="tablist" data-tabs="snap">
+        <button class="on" data-t="digits"><svg class="i"><use href="#i-hash"/></svg>数字</button>
+        <button data-t="text"><svg class="i"><use href="#i-type"/></svg>文字</button>
+        <button data-t="free"><svg class="i"><use href="#i-crop"/></svg>自由</button>
+      </div>
+      <div class="tabpane on" data-p="snap:digits">
+        <div class="crop"><img src="img/snap-digits.webp" width="900" height="146" alt="数字モード：電話番号の数字だけが隠れている" loading="lazy" /></div>
+        <p class="cap"><b>数字</b>（いつもの設定）：数字だけを隠し、「TEL」「担当」などの文字は残します。</p>
+      </div>
+      <div class="tabpane" data-p="snap:text">
+        <div class="crop"><img src="img/snap-text.webp" width="900" height="146" alt="文字モード：数字以外の文字だけが隠れている" loading="lazy" /></div>
+        <p class="cap"><b>文字</b>：名前などの<b>数字以外の文字</b>だけを隠し、数字は残します。</p>
+      </div>
+      <div class="tabpane" data-p="snap:free">
+        <div class="crop"><img src="img/snap-free.webp" width="900" height="146" alt="自由モード：なぞった四角の範囲がそのまま隠れている" loading="lazy" /></div>
+        <p class="cap"><b>自由</b>：なぞった四角の範囲をそのまま隠します（<kbd>Alt</kbd>＋ドラッグと同じ）。</p>
+      </div>
+      <div class="note"><span class="ni">📄</span><span><b>スキャンしたPDF</b>（文字情報のない画像のページ）では、ドラッグした範囲をそのまま隠します。</span></div>
+    </section>
+
+    <!-- 3 隠し方 -->
+    <section id="style">
+      <span class="eyebrow"><b>3</b>STYLE</span>
+      <h2>隠し方を選ぶ</h2>
+      <p class="lead">隠し方は3種類。キー <kbd>1</kbd> モザイク、<kbd>2</kbd> ぼかし、<kbd>3</kbd> 塗りつぶし。マスクを選んでから押すと、そのマスクも変わります。</p>
+
+      <h3>モザイク・ぼかしの程度（弱・中・強）</h3>
+      <p class="muted small">上のバーの「程度」、または <kbd>[</kbd> <kbd>]</kbd> キーで切り替えます。どの程度でも、書き出したPDFは画面のとおりの見た目になります。</p>
+      <div class="levels">
+        <span></span>
+        <span class="hd">弱<small>多少は推測できる</small></span>
+        <span class="hd">中<small>うっすら判別できる</small></span>
+        <span class="hd">強<small>ほとんど読めない</small></span>
+        <span class="rl"><svg class="i"><use href="#i-mosaic"/></svg>モザイク</span>
+        <span class="cell"><img src="img/lv-mosaic-weak.webp" width="358" height="82" alt="モザイク・弱" loading="lazy" /></span>
+        <span class="cell"><img src="img/lv-mosaic-medium.webp" width="358" height="82" alt="モザイク・中" loading="lazy" /></span>
+        <span class="cell"><img src="img/lv-mosaic-strong.webp" width="358" height="82" alt="モザイク・強" loading="lazy" /></span>
+        <span class="rl"><svg class="i"><use href="#i-blur"/></svg>ぼかし</span>
+        <span class="cell"><img src="img/lv-blur-weak.webp" width="358" height="82" alt="ぼかし・弱" loading="lazy" /></span>
+        <span class="cell"><img src="img/lv-blur-medium.webp" width="358" height="82" alt="ぼかし・中" loading="lazy" /></span>
+        <span class="cell"><img src="img/lv-blur-strong.webp" width="358" height="82" alt="ぼかし・強" loading="lazy" /></span>
+      </div>
+      <div class="orig"><span class="cell"><img src="img/lv-orig.webp" width="358" height="82" alt="隠す前" loading="lazy" /></span><span>← 隠す前</span></div>
+      <div class="note warn"><span class="ni">⚠️</span><span>「弱」は<b>あえて多少読める</b>くらいの軽い隠し方です。絶対に読まれたくない情報には「強」か「塗りつぶし」を使ってください。もっと細かく調整したいときは、マスクを選んだときのバーにある <b>スライダー</b> を使います。</span></div>
+
+      <h3>塗りつぶし：色と透明度</h3>
+      <div class="split">
+        <div class="frame">
+          <img src="img/fill-pop.webp" width="1240" height="760" alt="塗りの色と透明度を選ぶパネル" loading="lazy" />
+        </div>
+        <div>
+          <ol class="howto">
+            <li><kbd>3</kbd> か「塗りつぶし」を選ぶと、上のバーに <b>「色」</b> ボタンが出ます。</li>
+            <li>色見本から選びます。黒・グレー・ネイビー・ベージュなど11色と、<b>虹色のボタンで好きな色</b>も。</li>
+            <li><b>透明度</b>を上げると、下の文字が<b>あえて透けて見えます</b>。強調したい・和らげたい場所に。</li>
+          </ol>
+          <div class="note"><span class="ni">💡</span><span>マスクを選んだときに出るバーの <b>色見本ボタン</b> からも、そのマスクだけ色を変えられます。</span></div>
+        </div>
+      </div>
+      <div class="fills">
+        <figure><div class="cell"><img src="img/fill-black.webp" width="358" height="82" alt="黒・不透明" loading="lazy" /></div><figcaption>黒<small>不透明</small></figcaption></figure>
+        <figure><div class="cell"><img src="img/fill-gray.webp" width="358" height="82" alt="グレー・不透明" loading="lazy" /></div><figcaption>グレー<small>不透明</small></figcaption></figure>
+        <figure><div class="cell"><img src="img/fill-navy.webp" width="358" height="82" alt="ネイビー・不透明" loading="lazy" /></div><figcaption>ネイビー<small>不透明</small></figcaption></figure>
+        <figure><div class="cell"><img src="img/fill-beige.webp" width="358" height="82" alt="ベージュ・透明度50%" loading="lazy" /></div><figcaption>ベージュ<small>透明度 50%</small></figcaption></figure>
+        <figure><div class="cell"><img src="img/fill-yellow.webp" width="358" height="82" alt="イエロー・透明度75%" loading="lazy" /></div><figcaption>イエロー<small>透明度 75%</small></figcaption></figure>
+      </div>
+
+      <div class="split rev">
+        <div>
+          <h3 style="margin-top:0">動画で見る：あとから変える</h3>
+          <ol class="howto">
+            <li>マスクを<b>クリックして選ぶ</b>と、上に操作バーが出ます</li>
+            <li>バーで<b>弱・中・強</b>を切り替え、<kbd>2</kbd> でぼかし、<kbd>3</kbd> で塗りつぶし</li>
+            <li>色見本ボタンから<b>色と透明度</b>を選ぶ</li>
+          </ol>
+        </div>
+        <div class="frame vid">
+          <div class="frame-bar"><i></i><i></i><i></i><span>隠し方・程度・色を変える</span></div>
+          <video src="video/style.mp4" poster="video/style.webp" muted loop playsinline preload="none" aria-label="隠し方と程度と色を変える動画"></video>
+          <span class="play">▶ クリックで再生</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4 まとめて -->
+    <section id="bulk">
+      <span class="eyebrow"><b>4</b>BULK</span>
+      <h2>まとめて隠す</h2>
+      <p class="lead">同じ番号が何ページにも出てくる、全ページの口座番号を消したい…そんなときは1つずつ隠す必要はありません。</p>
+
+      <div class="split">
+        <div class="frame vid">
+          <div class="frame-bar"><i></i><i></i><i></i><span>同じ値をすべて隠す</span></div>
+          <video src="video/suggest.mp4" poster="video/suggest.webp" muted loop playsinline preload="none" aria-label="同じ値をすべて隠す動画"></video>
+          <span class="play">▶ クリックで再生</span>
+        </div>
+        <div>
+          <h3 style="margin-top:0">同じ値をすべて隠す</h3>
+          <ol class="howto">
+            <li>番号を1つ隠すと、ほかのページにも同じ値があれば <b>「同じ値がほかに◯か所あります」</b> と出ます。</li>
+            <li><kbd>Enter</kbd>（または「すべて隠す」）で、全部まとめて隠れます。</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="split rev">
+        <div>
+          <h3 style="margin-top:0">検索して一括で隠す</h3>
+          <ol class="howto">
+            <li><kbd>Ctrl</kbd>+<kbd>F</kbd>（虫めがねのボタン）で検索パネルを開きます。</li>
+            <li><b>プリセット</b>を押すか、文字を入力します。全角・半角は区別しません。</li>
+            <li>一覧で確認して、残したいものはチェックを外します。</li>
+            <li><kbd>Ctrl</kbd>+<kbd>Enter</kbd> で、全ページの該当箇所をまとめて隠します。</li>
+          </ol>
+          <div class="presets" aria-label="プリセットの一覧">
+            <span>電話番号</span><span>金額</span><span>日付</span><span>カード番号</span><span>口座番号</span><span>マイナンバー</span><span>郵便番号</span><span>メール</span><span>すべての数字</span>
+          </div>
+        </div>
+        <div class="frame vid">
+          <div class="frame-bar"><i></i><i></i><i></i><span>プリセットで一括</span></div>
+          <video src="video/search.mp4" poster="video/search.webp" muted loop playsinline preload="none" aria-label="検索パネルのプリセットで一括で隠す動画"></video>
+          <span class="play">▶ クリックで再生</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5 確認・修正 -->
+    <section id="fix">
+      <span class="eyebrow"><b>5</b>CHECK</span>
+      <h2>確認・修正する</h2>
+      <div class="frame" style="margin-top:20px">
+        <img src="img/toolbar.webp" width="1038" height="268" alt="マスクを選択したときに出る操作バー" loading="lazy" />
+      </div>
+      <p class="cap">マスクをクリックすると出る操作バー：件数 ／ 隠し方 ／ 程度（塗りつぶしなら色） ／ 細かい調整 ／ 文言 ／ 同じ値を探す ／ 削除</p>
+      <div class="cards">
+        <div class="card">
+          <h4><span class="ico"><svg><use href="#i-pointer"/></svg></span>動かす・大きさを変える</h4>
+          <p>マスクをドラッグで移動、四隅と辺のつまみで大きさを変更。矢印キーで1pt（<kbd>Shift</kbd>で10pt）ずつ動かせます。</p>
+        </div>
+        <div class="card">
+          <h4><span class="ico"><svg><use href="#i-eye"/></svg></span>原本を確認</h4>
+          <p><kbd>P</kbd> を押している間だけ、隠す前の原本を表示。目のアイコンで切り替えもできます。</p>
+        </div>
+        <div class="card">
+          <h4><span class="ico"><svg><use href="#i-undo"/></svg></span>元に戻す</h4>
+          <p><kbd>Ctrl</kbd>+<kbd>Z</kbd> で元に戻す、<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> でやり直し。削除も <kbd>Delete</kbd> ですぐ戻せます。</p>
+        </div>
+        <div class="card">
+          <h4><span class="ico"><svg><use href="#i-wand"/></svg></span>文言を重ねる</h4>
+          <p>「非開示」「個人情報」などの文言を、マスクの上に重ねられます。自由入力も可能です。</p>
+        </div>
+        <div class="card">
+          <h4><span class="ico"><svg><use href="#i-search"/></svg></span>マスク一覧</h4>
+          <p><kbd>L</kbd> で隠した箇所の一覧。クリックでその場所へ移動、まとめて選択・削除もできます。</p>
+        </div>
+        <div class="card">
+          <h4><span class="ico"><svg><use href="#i-pointer"/></svg></span>まとめて選ぶ</h4>
+          <p><kbd>Shift</kbd>+クリックで追加選択、<kbd>Shift</kbd>+ドラッグで範囲内を選択、<kbd>Ctrl</kbd>+<kbd>A</kbd> でページ内すべて。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6 ページ -->
+    <section id="pages">
+      <span class="eyebrow"><b>6</b>PAGES</span>
+      <h2>ページを整える</h2>
+      <div class="split rev">
+        <div>
+          <ol class="howto">
+            <li>左の<b>ページ一覧</b>でページをクリックすると、そのページへ移動します。</li>
+            <li>サムネイルに<b>マウスを乗せる</b>と、回転・削除のボタンが出ます。</li>
+            <li>サムネイルを<b>ドラッグ</b>すると並べ替えられます。</li>
+            <li>一覧の上の <b>＋</b> でPDFを追加。複数のファイルは書き出すときに<b>1つに結合</b>もできます。</li>
+          </ol>
+          <div class="note"><span class="ni">⌨️</span><span>表示中のページは <kbd>Ctrl</kbd>+<kbd>L</kbd> 左回転、<kbd>Ctrl</kbd>+<kbd>R</kbd> 右回転、<kbd>Ctrl</kbd>+<kbd>D</kbd> 削除。</span></div>
+        </div>
+        <div class="frame" style="max-width:260px;justify-self:center">
+          <img src="img/thumbs.webp" width="352" height="1120" alt="ページ一覧。マウスを乗せたサムネイルに回転と削除のボタン" loading="lazy" />
+        </div>
+      </div>
+    </section>
+
+    <!-- 7 書き出す -->
+    <section id="export">
+      <span class="eyebrow"><b>7</b>EXPORT</span>
+      <h2>書き出す</h2>
+      <p class="lead">右上の「書き出す」（<kbd>Ctrl</kbd>+<kbd>S</kbd>）を押して、仕上がりを選びます。元のファイルは変更されず、新しいPDFが保存されます。</p>
+
+      <h3>仕上がりの選び方</h3>
+      <p class="muted small">どれを選んでも見た目は画面で加工したとおりです。違いは「隠した部分の下にある元の文字データ」の扱い。押して比べてみてください。</p>
+      <div class="pick" id="pick">
+        <button class="on" data-k="visual"><b>加工したとおり</b><span>見た目は画面のまま、下の文字データだけ削除</span><em>おすすめ</em></button>
+        <button data-k="overlay"><b>見た目だけ重ねる</b><span>上に重ねるだけ。下の文字データは残る</span><em class="w">注意</em></button>
+        <button data-k="image"><b>全ページを画像にする</b><span>文字情報を一切持たないPDFにする</span><em>最も安全</em></button>
+      </div>
+      <div class="pick-detail" id="pickDetail"></div>
+
+      <div class="split">
+        <div class="frame vid">
+          <div class="frame-bar"><i></i><i></i><i></i><span>書き出しと自動検証</span></div>
+          <video src="video/export.mp4" poster="video/export.webp" muted loop playsinline preload="none" aria-label="書き出しと検証レポートの動画"></video>
+          <span class="play">▶ クリックで再生</span>
+        </div>
+        <div>
+          <h3 style="margin-top:0">書き出したら、自動で確認</h3>
+          <ul class="checks">
+            <li><span><b>隠した部分に残っている文字：0文字</b><br />書き出したPDFを開き直して、マスクの中に文字が残っていないか確かめます。</span></li>
+            <li><span><b>隠した部分以外の見た目の変化</b><br />マスクの外が元と変わっていないか、画素を比べます。</span></li>
+            <li><span><b>文書情報</b><br />作成者・タイトルなどの情報が消えているかを確認します。</span></li>
+            <li><span><b>同じ値の取り残し</b><br />隠した番号と同じものがマスクの外に残っていれば知らせます。</span></li>
+          </ul>
+        </div>
+      </div>
+      <div class="note"><span class="ni"><svg class="i"><use href="#i-lock"/></svg></span><span>「文書プロパティ・パスワード保護」を開くと、<b>パスワード</b>（AES-256）や印刷・コピーの<b>権限</b>、タイトルなどの文書プロパティを設定できます。複数のファイルは<b>ZIPでまとめて</b>、または<b>1つのPDFに結合</b>して保存できます。</span></div>
+    </section>
+
+    <!-- ショートカット -->
+    <section id="keys">
+      <span class="eyebrow">SHORTCUTS</span>
+      <h2>ショートカット早見表</h2>
+      <p class="keyhint">このページでキーを押すと、表の該当する行が光ります → <span class="live" id="keyLive">キーを押してみて</span></p>
+      <div class="keys">
+        <div>
+          <h4>隠す</h4>
+          <div class="krow" data-k="click"><span>数字のかたまりを隠す</span><span class="kk"><kbd>クリック</kbd></span></div>
+          <div class="krow" data-k="drag"><span>範囲内の数字だけを隠す</span><span class="kk"><kbd>ドラッグ</kbd></span></div>
+          <div class="krow" data-k="alt"><span>範囲そのままを隠す</span><span class="kk"><kbd>Alt</kbd><kbd>ドラッグ</kbd></span></div>
+          <div class="krow" data-k="1 2 3"><span>モザイク ／ ぼかし ／ 塗りつぶし</span><span class="kk"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></span></div>
+          <div class="krow" data-k="[ ]"><span>程度（弱・中・強）を切り替え</span><span class="kk"><kbd>[</kbd><kbd>]</kbd></span></div>
+          <div class="krow" data-k="s"><span>吸着の切替（数字→文字→自由）</span><span class="kk"><kbd>S</kbd></span></div>
+          <div class="krow" data-k="enter"><span>「同じ値をすべて隠す」</span><span class="kk"><kbd>Enter</kbd></span></div>
+          <div class="krow" data-k="p"><span>原本を確認（押している間）</span><span class="kk"><kbd>P</kbd></span></div>
+          <h4>検索・書き出し</h4>
+          <div class="krow" data-k="ctrl+f"><span>検索して隠す</span><span class="kk"><kbd>Ctrl</kbd><kbd>F</kbd></span></div>
+          <div class="krow" data-k="ctrl+enter"><span>検索結果をすべて隠す</span><span class="kk"><kbd>Ctrl</kbd><kbd>Enter</kbd></span></div>
+          <div class="krow" data-k="ctrl+s"><span>書き出す</span><span class="kk"><kbd>Ctrl</kbd><kbd>S</kbd></span></div>
+          <div class="krow" data-k="ctrl+o"><span>PDFを開く</span><span class="kk"><kbd>Ctrl</kbd><kbd>O</kbd></span></div>
+        </div>
+        <div>
+          <h4>選択・編集</h4>
+          <div class="krow" data-k="delete backspace"><span>選択中のマスクを削除</span><span class="kk"><kbd>Delete</kbd></span></div>
+          <div class="krow" data-k="arrowup arrowdown arrowleft arrowright"><span>1pt移動（Shiftで10pt）</span><span class="kk"><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd></span></div>
+          <div class="krow" data-k="ctrl+a"><span>このページのマスクをすべて選択</span><span class="kk"><kbd>Ctrl</kbd><kbd>A</kbd></span></div>
+          <div class="krow" data-k="ctrl+z"><span>元に戻す ／ やり直す（Shift）</span><span class="kk"><kbd>Ctrl</kbd><kbd>Z</kbd></span></div>
+          <div class="krow" data-k="escape"><span>選択を外す</span><span class="kk"><kbd>Esc</kbd></span></div>
+          <div class="krow" data-k="l"><span>マスク一覧</span><span class="kk"><kbd>L</kbd></span></div>
+          <h4>表示・ページ</h4>
+          <div class="krow" data-k="m v h"><span>マスク ／ 選択 ／ 手のひら</span><span class="kk"><kbd>M</kbd><kbd>V</kbd><kbd>H</kbd></span></div>
+          <div class="krow" data-k="space"><span>押しながらドラッグでスクロール</span><span class="kk"><kbd>Space</kbd></span></div>
+          <div class="krow" data-k="ctrl+= ctrl+- ctrl+0"><span>拡大 ／ 縮小 ／ 幅に合わせる</span><span class="kk"><kbd>Ctrl</kbd><kbd>+</kbd><kbd>-</kbd><kbd>0</kbd></span></div>
+          <div class="krow" data-k="ctrl+l ctrl+r ctrl+d"><span>表示中のページを回転 ／ 削除</span><span class="kk"><kbd>Ctrl</kbd><kbd>L</kbd><kbd>R</kbd><kbd>D</kbd></span></div>
+          <div class="krow" data-k="f tab"><span>全画面 ／ パネルを隠す</span><span class="kk"><kbd>F</kbd><kbd>Tab</kbd></span></div>
+          <div class="krow" data-k="?"><span>使い方とショートカット</span><span class="kk"><kbd>?</kbd></span></div>
+        </div>
+      </div>
+      <p class="small muted" style="margin-top:12px">Mac では <kbd>Ctrl</kbd> の代わりに <kbd>⌘</kbd>、<kbd>Alt</kbd> の代わりに <kbd>option</kbd> を使います。</p>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq">
+      <span class="eyebrow">FAQ</span>
+      <h2>よくある質問</h2>
+      <div class="faq">
+        <details open>
+          <summary>PDFが外部に送信されることはありませんか？</summary>
+          <div>ありません。PDFの読み込みから書き出しまで、すべてお使いのブラウザの中だけで処理します。さらに、アプリには外部への通信を禁止する設定（CSP）が入っていて、ブラウザ自身が送信を止めます。最初に開いたあとはネットを切っても動くので、気になる場合はオフラインで使ってください。</div>
+        </details>
+        <details>
+          <summary>書き出したPDFで、隠した数字をコピーされませんか？</summary>
+          <div>「加工したとおり」と「全ページを画像にする」では、隠した部分の下の文字データを削除するので、コピーや検索でも読めません。書き出し後の自動確認で「隠した部分に残っている文字：0文字」と表示されます。「見た目だけ重ねる」は文字データが残るので、見た目を和らげれば十分なときだけ使ってください。</div>
+        </details>
+        <details>
+          <summary>「弱」のモザイクや、透けている塗りつぶしは安全ですか？</summary>
+          <div>どちらも<b>あえて多少読める</b>ようにする隠し方です。文字データは削除されますが、見た目から推測できることがあります。秘密にしたい情報には「強」か、不透明の塗りつぶしを使ってください。</div>
+        </details>
+        <details>
+          <summary>スキャンしたPDF（紙を読み込んだもの）でも使えますか？</summary>
+          <div>使えます。文字情報のないページでは、ドラッグした範囲をそのまま隠します（数字への自動吸着や検索は、文字情報のあるPDFで使えます）。</div>
+        </details>
+        <details>
+          <summary>途中でブラウザを閉じてしまったら？</summary>
+          <div>マスクの位置とページの構成は自動で保存されています。同じPDFを開き直すと「前回の作業が残っています」と出るので、「復元する」を押してください。PDF本体や隠した文字は保存しません。</div>
+        </details>
+        <details>
+          <summary>元のPDFファイルは書き換わりますか？</summary>
+          <div>書き換わりません。書き出すと、新しいファイル（例：「〜_加工済.pdf」）として保存されます。</div>
+        </details>
+        <details>
+          <summary>何ファイルまで同時に扱えますか？</summary>
+          <div>10〜20ファイルをまとめて開いて作業できます。書き出すときは、ファイルごと（ZIPにまとめる）か、1つのPDFに結合するかを選べます。</div>
+        </details>
+        <details>
+          <summary>どのブラウザで使えますか？</summary>
+          <div>Chrome・Edge・Safari・Firefox の最新版で使えます。大きなPDFを扱うので、パソコンでの利用をおすすめします。</div>
+        </details>
+      </div>
+
+      <div class="cta">
+        <h2>さっそく使ってみましょう</h2>
+        <p>PDFをドロップして、なぞるだけ。登録やインストールは不要です。</p>
+        <a class="btn primary lg" href="../">アプリを開く</a>
+      </div>
+    </section>
+  </main>
+</div>
+
+<footer>カクス — PDFの処理はすべてお使いの端末の中で行われます。</footer>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---------- 目次・進み具合 ----------
+  const toc = document.getElementById("toc");
+  const menuBtn = document.getElementById("menuBtn");
+  const progress = document.getElementById("progress");
+  menuBtn.addEventListener("click", () => {
+    const open = toc.classList.toggle("open");
+    menuBtn.setAttribute("aria-expanded", String(open));
+  });
+  toc.addEventListener("click", (e) => {
+    if (e.target.closest("a")) { toc.classList.remove("open"); menuBtn.setAttribute("aria-expanded", "false"); }
+  });
+  const links = [...toc.querySelectorAll("a")];
+  const sections = links.map((a) => document.querySelector(a.getAttribute("href"))).filter(Boolean);
+  const onScroll = () => {
+    const h = document.documentElement;
+    progress.style.width = `${(h.scrollTop / Math.max(1, h.scrollHeight - h.clientHeight)) * 100}%`;
+    let cur = sections[0];
+    for (const s of sections) if (s.getBoundingClientRect().top < 140) cur = s;
+    links.forEach((a) => a.classList.toggle("on", a.getAttribute("href") === "#" + cur.id));
+  };
+  addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
+
+  // ---------- 動画：見えている間だけ再生 ----------
+  const vids = [...document.querySelectorAll(".vid")];
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      const box = e.target;
+      const v = box.querySelector("video");
+      if (e.isIntersecting && !box.dataset.user) {
+        v.play().then(() => box.classList.remove("paused")).catch(() => box.classList.add("paused"));
+      } else if (!e.isIntersecting) {
+        v.pause();
+      }
+    }
+  }, { threshold: 0.45 });
+  vids.forEach((box) => {
+    box.classList.add("paused");
+    io.observe(box);
+    const v = box.querySelector("video");
+    v.addEventListener("play", () => box.classList.remove("paused"));
+    v.addEventListener("pause", () => box.classList.add("paused"));
+    box.addEventListener("click", () => {
+      if (v.paused) { delete box.dataset.user; v.play().catch(() => {}); }
+      else { box.dataset.user = "1"; v.pause(); }
+    });
+  });
+
+  // ---------- タブ ----------
+  document.querySelectorAll("[data-tabs]").forEach((tabs) => {
+    const name = tabs.dataset.tabs;
+    tabs.addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      tabs.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+      document.querySelectorAll(`[data-p^="${name}:"]`).forEach((p) => p.classList.toggle("on", p.dataset.p === `${name}:${b.dataset.t}`));
+    });
+  });
+
+  // ---------- 画面の見かた ----------
+  const SPOTS = [
+    { k: "open", t: "開く", d: "PDFを追加で開きます。画面へのドロップでもOK。", r: { l: 9.44, t: 1.08, w: 4.75, h: 3.64 } },
+    { k: "tools", t: "ツール", d: "マスク（M）・選択（V）・手のひら（H）。ふだんは「マスク」のままで大丈夫です。", r: { l: 19.11, t: 0.74, w: 7.47, h: 4.32 } },
+    { k: "styles", t: "隠し方", d: "モザイク・ぼかし・塗りつぶし。キー 1・2・3 でも切り替えられます。", r: { l: 27.24, t: 0.74, w: 8.07, h: 4.32 } },
+    { k: "levels", t: "程度（塗りつぶしのときは色）", d: "弱・中・強。[ ] キーでも切替。塗りつぶしを選ぶと、ここが色と透明度のボタンになります。", r: { l: 35.98, t: 0.74, w: 9.07, h: 4.32 } },
+    { k: "snap", t: "吸着", d: "数字・文字・自由。ドラッグしたときに何に合わせて隠すかを選びます（S キー）。", r: { l: 45.71, t: 0.74, w: 14.27, h: 4.32 } },
+    { k: "find", t: "検索・マスク一覧・原本", d: "虫めがね＝検索して隠す（Ctrl+F）、リスト＝マスク一覧（L）、目＝原本を確認（P 長押し）。", r: { l: 64.89, t: 0.97, w: 7.34, h: 3.86 } },
+    { k: "export", t: "書き出す", d: "加工したPDFを保存します（Ctrl+S）。", r: { l: 92.23, t: 0.97, w: 7.11, h: 3.86 } },
+    { k: "sidebar", t: "ページ一覧", d: "クリックで移動、ドラッグで並べ替え。マウスを乗せると回転・削除。赤い数字は隠した数。", r: { l: 0, t: 5.91, w: 11.73, h: 90.91 } },
+    { k: "mask", t: "マスク", d: "隠した場所。クリックで選択、ドラッグで移動、つまみで大きさ変更。", r: { l: 67.01, t: 49.11, w: 7.71, h: 2.29 } },
+    { k: "status", t: "ステータスバー", d: "いまできる操作のヒント。右端の「端末内で処理」は、PDFが外に出ていないしるしです。", r: { l: 0, t: 96.82, w: 100, h: 3.18 } },
+  ];
+  const shot = document.getElementById("shot");
+  const box = document.getElementById("hsBox");
+  const tip = document.getElementById("hsTip");
+  const parts = document.getElementById("parts");
+  const markers = [];
+  const pos = (s) => {
+    const r = s.r;
+    // 番号は対象のすぐ下（大きい領域は中央）に置く
+    if (r.h > 20) return { x: r.l + r.w / 2, y: r.t + r.h / 2 };
+    if (r.t > 90) return { x: 50, y: r.t - 2.4 };
+    if (r.t < 3) return { x: r.l + r.w / 2, y: r.t + r.h + 3.2 };
+    return { x: r.l + r.w + 2.2, y: r.t + r.h / 2 };
+  };
+  let active = -1;
+  const show = (i) => {
+    active = i;
+    markers.forEach((m, j) => m.classList.toggle("on", j === i));
+    [...parts.children].forEach((li, j) => li.classList.toggle("on", j === i));
+    if (i < 0) { box.classList.remove("on"); tip.classList.remove("on"); return; }
+    const s = SPOTS[i];
+    const pad = 0.4;
+    Object.assign(box.style, { left: `${s.r.l - pad}%`, top: `${s.r.t - pad}%`, width: `${s.r.w + pad * 2}%`, height: `${s.r.h + pad * 2}%` });
+    box.classList.add("on");
+    tip.innerHTML = `<b>${i + 1}. ${s.t}</b>${s.d}`;
+    const p = pos(s);
+    const sw = shot.clientWidth;
+    const tw = tip.offsetWidth || 300;
+    tip.style.left = `${Math.min(Math.max(8, (p.x / 100) * sw - tw / 2), sw - tw - 8)}px`;
+    if (p.y > 60) { tip.style.top = ""; tip.style.bottom = `${100 - p.y + 4}%`; }
+    else { tip.style.bottom = ""; tip.style.top = `${p.y + 4}%`; }
+    tip.classList.add("on");
+  };
+  SPOTS.forEach((s, i) => {
+    const b = document.createElement("button");
+    b.className = "hs";
+    b.textContent = String(i + 1);
+    b.setAttribute("aria-label", `${i + 1}. ${s.t}`);
+    const p = pos(s);
+    b.style.left = `${p.x}%`;
+    b.style.top = `${p.y}%`;
+    b.addEventListener("mouseenter", () => show(i));
+    b.addEventListener("focus", () => show(i));
+    b.addEventListener("click", (e) => { e.stopPropagation(); show(active === i ? -1 : i); });
+    shot.appendChild(b);
+    markers.push(b);
+    const li = document.createElement("li");
+    li.innerHTML = `<b>${i + 1}</b><span><b>${s.t}</b><small>${s.d}</small></span>`;
+    li.addEventListener("mouseenter", () => show(i));
+    li.addEventListener("click", () => { show(i); shot.scrollIntoView({ behavior: "smooth", block: "center" }); });
+    parts.appendChild(li);
+  });
+  shot.addEventListener("mouseleave", () => show(-1));
+  parts.addEventListener("mouseleave", () => show(-1));
+
+  // ---------- 書き出しの選び方 ----------
+  const PICK = {
+    visual: { d: "<b>迷ったらこれ。</b>モザイク・ぼかし・塗りは画面のとおりの見た目で残り、その下にあった元の文字・画像は削除されます。コピーや検索でも読めません。", m: [["見た目の再現", 100], ["文字データの削除", 100], ["検索・コピー（隠していない部分）", 100]] },
+    overlay: { d: "加工を上に重ねるだけで、<b>元の文字データは残ります</b>。コピーや検索で隠した内容が読めてしまうので、見た目を和らげれば十分なとき（社内の参考資料など）だけ使ってください。", m: [["見た目の再現", 100], ["文字データの削除", 0], ["検索・コピー（隠していない部分）", 100]] },
+    image: { d: "全ページを画像にして、<b>文字情報を一切持たない</b>PDFにします。最も安全ですが、隠していない部分も検索・コピーできなくなり、ファイルは大きくなります。", m: [["見た目の再現", 92], ["文字データの削除", 100], ["検索・コピー（隠していない部分）", 0]] },
+  };
+  const pick = document.getElementById("pick");
+  const pickDetail = document.getElementById("pickDetail");
+  const setPick = (k) => {
+    pick.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.k === k));
+    const p = PICK[k];
+    pickDetail.innerHTML = `${p.d}<div class="meters">${p.m.map(([l, v]) => `<span>${l}</span><i style="--v:${v}%"></i>`).join("")}</div>`;
+  };
+  pick.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setPick(b.dataset.k); });
+  setPick("visual");
+
+  // ---------- ショートカット：押したキーの行を光らせる ----------
+  const keyLive = document.getElementById("keyLive");
+  const rows = [...document.querySelectorAll(".krow")];
+  const label = (e) => {
+    const k = e.key === " " ? "Space" : e.key.length === 1 ? e.key.toUpperCase() : e.key;
+    return [e.ctrlKey && "Ctrl", e.metaKey && "⌘", e.altKey && "Alt", e.shiftKey && e.key.length > 1 && "Shift", k].filter(Boolean).join(" + ");
+  };
+  addEventListener("keydown", (e) => {
+    if (e.target.closest && e.target.closest("input, textarea")) return;
+    if (["Control", "Meta", "Shift", "Alt"].includes(e.key)) return;
+    const mod = e.ctrlKey || e.metaKey;
+    let key = e.key === " " ? "space" : e.key.toLowerCase();
+    if (key === "+" || key === ";") key = "=";
+    const id = (mod ? "ctrl+" : "") + key;
+    keyLive.textContent = label(e);
+    let hit = rows.filter((r) => r.dataset.k.split(" ").includes(id));
+    if (!hit.length && e.altKey) hit = rows.filter((r) => r.dataset.k === "alt");
+    hit.forEach((r) => { r.classList.remove("flash"); void r.offsetWidth; r.classList.add("flash"); });
+  });
+
+  // ---------- お試しエリア ----------
+  const sb = document.getElementById("sandbox");
+  const cv = sb.querySelector("canvas");
+  const ctx = cv.getContext("2d", { willReadFrequently: true });
+  const layer = sb.querySelector(".sb-layer");
+  const coach = sb.querySelector(".sb-coach");
+  const peekBadge = sb.querySelector(".sb-peekbadge");
+  const hintEl = sb.querySelector(".sb-status .hint");
+  const countEl = sb.querySelector(".sb-status .count b");
+  const fillBox = sb.querySelector(".sb-fill");
+  const levelSeg = sb.querySelector('[data-group="level"]');
+  const W = 600, H = 330;
+  const FONT = '"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic UI","Yu Gothic",Meiryo,sans-serif';
+  const ITEMS = [
+    { x: 30, y: 58, size: 28, weight: 700, text: "見積書" },
+    { x: 570, y: 40, size: 12, text: "No. Q-2026-0815", color: "#555", align: "right" },
+    { x: 570, y: 60, size: 12, text: "発行日 2026/10/24", color: "#555", align: "right" },
+    { x: 30, y: 112, size: 15, weight: 600, text: "株式会社サンプル 御中" },
+    { x: 30, y: 148, size: 14, text: "TEL 03-1234-5678　FAX 03-1234-5679" },
+    { x: 30, y: 176, size: 14, text: "担当：山田 太郎（携帯 090-1234-5678）" },
+    { x: 30, y: 204, size: 14, text: "口座番号 1234567（普通預金）" },
+    { x: 46, y: 268, size: 15, text: "お見積金額（税込）", color: "#fff" },
+    { x: 554, y: 271, size: 23, weight: 700, text: "¥1,234,567", color: "#fff", align: "right" },
+  ];
+  const COLORS = [["黒", "#000000"], ["グレー", "#6b7280"], ["ネイビー", "#1e3a5f"], ["ベージュ", "#e8dcc4"], ["朱", "#e8492a"], ["イエロー", "#f5c518"]];
+  const LEVELS = { weak: [0.14, 0.5], medium: [0.2, 0.8], strong: [0.32, 2] };
+  const LEVEL_ORDER = ["weak", "medium", "strong"];
+  const LEVEL_LABEL = { weak: "弱", medium: "中", strong: "強" };
+
+  const state = { style: "mosaic", level: "strong", color: "#000000", opacity: 1, snap: "digits", peek: false };
+  let masks = [];
+  let selection = [];
+  let seq = 0;
+  let R = 1;
+  const base = document.createElement("canvas");
+  const bctx = base.getContext("2d", { willReadFrequently: true });
+
+  // 文字のかたまり（数字／数字以外）
+  const meas = document.createElement("canvas").getContext("2d");
+  const isDigit = (c) => /[0-9０-９]/.test(c);
+  const isJoin = (c) => /[-,./:‐－]/.test(c);
+  const isText = (c) => !/[\s　（）()：:・、。,.\-/¥$]/.test(c) && !isDigit(c);
+  const tokens = [];
+  for (const it of ITEMS) {
+    meas.font = `${it.weight || 400} ${it.size}px ${FONT}`;
+    const t = it.text;
+    const x0 = it.align === "right" ? it.x - meas.measureText(t).width : it.x;
+    const wAt = (i) => meas.measureText(t.slice(0, i)).width;
+    const push = (kind, a, b) => {
+      const xa = x0 + wAt(a), xb = x0 + wAt(b);
+      tokens.push({ kind, text: t.slice(a, b), x: xa - 1, y: it.y - it.size * 0.92, w: xb - xa + 2, h: it.size * 1.18 });
+    };
+    let i = 0;
+    while (i < t.length) {
+      if (isDigit(t[i])) {
+        let j = i + 1;
+        while (j < t.length && (isDigit(t[j]) || (isJoin(t[j]) && isDigit(t[j - 1]) && j + 1 < t.length && isDigit(t[j + 1])))) j++;
+        push("digit", i, j);
+        i = j;
+      } else if (isText(t[i])) {
+        let j = i + 1;
+        while (j < t.length && isText(t[j])) j++;
+        push("text", i, j);
+        i = j;
+      } else i++;
+    }
+  }
+
+  function drawBase() {
+    base.width = Math.round(W * R);
+    base.height = Math.round(H * R);
+    bctx.setTransform(R, 0, 0, R, 0, 0);
+    bctx.fillStyle = "#fff";
+    bctx.fillRect(0, 0, W, H);
+    bctx.fillStyle = "#f2f3f6";
+    bctx.fillRect(0, 0, W, 78);
+    bctx.fillStyle = "#1e2a44";
+    bctx.fillRect(26, 236, W - 52, 54);
+    bctx.strokeStyle = "#333";
+    bctx.lineWidth = 1;
+    bctx.beginPath();
+    bctx.moveTo(30, 121);
+    bctx.lineTo(250, 121);
+    bctx.stroke();
+    bctx.textBaseline = "alphabetic";
+    for (const it of ITEMS) {
+      bctx.font = `${it.weight || 400} ${it.size}px ${FONT}`;
+      bctx.fillStyle = it.color || "#1d1d24";
+      bctx.textAlign = it.align === "right" ? "right" : "left";
+      bctx.fillText(it.text, it.x, it.y);
+    }
+    bctx.textAlign = "left";
+  }
+
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    const next = Math.min(3, Math.max(1, (cv.clientWidth / W) * dpr));
+    if (Math.abs(next - R) < 0.01 && base.width) return;
+    R = next;
+    cv.width = Math.round(W * R);
+    cv.height = Math.round(H * R);
+    drawBase();
+    render();
+  }
+
+  const strength = (m) => {
+    const [f, floor] = LEVELS[m.level];
+    return Math.max(floor, Math.min(24, Math.min(m.w, m.h, 48) * f));
+  };
+  const clampI = (v, a, b) => (v < a ? a : v > b ? b : v);
+
+  function boxes(sigma) {
+    const n = 3;
+    const wIdeal = Math.sqrt((12 * sigma * sigma) / n + 1);
+    let wl = Math.floor(wIdeal);
+    if (wl % 2 === 0) wl--;
+    const wu = wl + 2;
+    const m = Math.round((12 * sigma * sigma - n * wl * wl - 4 * n * wl - 3 * n) / (-4 * wl - 4));
+    return [0, 1, 2].map((i) => (i < m ? wl : wu));
+  }
+  function boxPass(src, dst, w, h, r, horizontal) {
+    if (r < 1) { dst.set(src); return; }
+    const inv = 1 / (2 * r + 1);
+    const outer = horizontal ? h : w;
+    const len = horizontal ? w : h;
+    for (let o = 0; o < outer; o++) {
+      const at = (k) => (horizontal ? o * w + clampI(k, 0, w - 1) : clampI(k, 0, h - 1) * w + o);
+      let acc = 0;
+      for (let k = -r; k <= r; k++) acc += src[at(k)];
+      for (let k = 0; k < len; k++) {
+        dst[horizontal ? o * w + k : k * w + o] = acc * inv;
+        acc += src[at(k + r + 1)] - src[at(k - r)];
+      }
+    }
+  }
+  function blurImage(img, sigma) {
+    const { data, width: w, height: h } = img;
+    const bs = boxes(sigma);
+    const a = new Float32Array(w * h), tmp = new Float32Array(w * h);
+    for (let c = 0; c < 3; c++) {
+      for (let i = 0; i < w * h; i++) a[i] = data[i * 4 + c];
+      for (const b of bs) {
+        const r = (b - 1) / 2;
+        boxPass(a, tmp, w, h, r, true);
+        boxPass(tmp, a, w, h, r, false);
+      }
+      for (let i = 0; i < w * h; i++) data[i * 4 + c] = a[i];
+    }
+  }
+
+  function drawMask(m) {
+    const x0 = clampI(Math.round(m.x * R), 0, cv.width), y0 = clampI(Math.round(m.y * R), 0, cv.height);
+    const x1 = clampI(Math.round((m.x + m.w) * R), 0, cv.width), y1 = clampI(Math.round((m.y + m.h) * R), 0, cv.height);
+    const w = x1 - x0, h = y1 - y0;
+    if (w <= 0 || h <= 0) return;
+    if (m.style === "fill") {
+      ctx.save();
+      ctx.globalAlpha = m.opacity;
+      ctx.fillStyle = m.color;
+      ctx.fillRect(x0, y0, w, h);
+      ctx.restore();
+      return;
+    }
+    const s = strength(m) * R;
+    if (m.style === "mosaic") {
+      const img = bctx.getImageData(x0, y0, w, h);
+      const d = img.data;
+      const cols = Math.max(1, Math.round(w / Math.max(1, s)));
+      const rows = Math.max(1, Math.round(h / Math.max(1, s)));
+      for (let by = 0; by < rows; by++) {
+        const ya = Math.floor((by * h) / rows), yb = Math.floor(((by + 1) * h) / rows);
+        for (let bx = 0; bx < cols; bx++) {
+          const xa = Math.floor((bx * w) / cols), xb = Math.floor(((bx + 1) * w) / cols);
+          let r = 0, g = 0, b = 0, n = 0;
+          for (let y = ya; y < yb; y++) for (let x = xa; x < xb; x++) { const p = (y * w + x) * 4; r += d[p]; g += d[p + 1]; b += d[p + 2]; n++; }
+          if (!n) continue;
+          r /= n; g /= n; b /= n;
+          for (let y = ya; y < yb; y++) for (let x = xa; x < xb; x++) { const p = (y * w + x) * 4; d[p] = r; d[p + 1] = g; d[p + 2] = b; d[p + 3] = 255; }
+        }
+      }
+      ctx.putImageData(img, x0, y0);
+      return;
+    }
+    const sigma = Math.max(0.4, (s / R) * 0.6) * R;
+    const mg = Math.ceil(sigma * 3);
+    const ax = Math.max(0, x0 - mg), ay = Math.max(0, y0 - mg);
+    const aw = Math.min(base.width, x1 + mg) - ax, ah = Math.min(base.height, y1 + mg) - ay;
+    const img = bctx.getImageData(ax, ay, aw, ah);
+    blurImage(img, sigma);
+    ctx.putImageData(img, ax, ay, x0 - ax, y0 - ay, w, h);
+  }
+
+  function render() {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(base, 0, 0);
+    if (!state.peek) for (const m of masks) drawMask(m);
+    drawLayer();
+  }
+
+  // 重ねる表示（選択枠・ホバー・ドラッグ範囲）
+  const pct = (r) => `left:${(r.x / W) * 100}%;top:${(r.y / H) * 100}%;width:${(r.w / W) * 100}%;height:${(r.h / H) * 100}%`;
+  let hover = null;
+  let rubber = null;
+  function drawLayer() {
+    let html = "";
+    if (hover && !rubber) html += `<div class="sb-hover" style="${pct(hover)}"></div>`;
+    if (rubber) html += `<div class="sb-rubber" style="${pct(rubber)}"></div>`;
+    if (!state.peek)
+      for (const m of masks) if (selection.includes(m.id))
+        html += `<div class="sb-sel" style="${pct(m)}">${selection.length === 1 ? `<button data-del="${m.id}" aria-label="このマスクを削除">×</button>` : ""}</div>`;
+    layer.innerHTML = html;
+    countEl.textContent = String(masks.length);
+  }
+  layer.addEventListener("pointerdown", (e) => {
+    const b = e.target.closest("[data-del]");
+    if (!b) return;
+    e.stopPropagation();
+    e.preventDefault();
+    removeMasks([b.dataset.del]);
+  });
+
+  function placeCoach() {
+    const t = tokens.find((k) => k.text === "03-1234-5678");
+    coach.style.left = `${((t.x + t.w / 2) / W) * 100}%`;
+    coach.style.top = `${(t.y / H) * 100 - 1}%`;
+  }
+
+  // ---------- ミッション ----------
+  const missions = sb.parentElement.querySelector(".missions");
+  const mItems = [...missions.querySelectorAll("li")];
+  const doneSet = new Set();
+  function markNext() {
+    let next = false;
+    for (const li of mItems) {
+      li.classList.remove("next");
+      if (!next && !doneSet.has(li.dataset.m)) { li.classList.add("next"); next = true; }
+    }
+    missions.querySelector(".meter i").style.width = `${(doneSet.size / mItems.length) * 100}%`;
+    missions.querySelector(".m-done").hidden = doneSet.size < mItems.length;
+  }
+  function done(k) {
+    if (doneSet.has(k)) return;
+    doneSet.add(k);
+    mItems.find((li) => li.dataset.m === k)?.classList.add("done");
+    markNext();
+  }
+  markNext();
+
+  // ---------- 操作 ----------
+  function hint(text) { hintEl.innerHTML = text; }
+  function syncBar() {
+    sb.querySelectorAll(".seg[data-group]").forEach((seg) => {
+      const g = seg.dataset.group;
+      let v = state[g];
+      if (g === "level") {
+        const sel = masks.filter((m) => selection.includes(m.id) && m.style !== "fill");
+        if (sel.length && sel.every((m) => m.level === sel[0].level)) v = sel[0].level;
+      }
+      if (g === "style") {
+        const sel = masks.filter((m) => selection.includes(m.id));
+        if (sel.length && sel.every((m) => m.style === sel[0].style)) v = sel[0].style;
+      }
+      seg.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.v === v));
+    });
+    const sel = masks.filter((m) => selection.includes(m.id));
+    const shownStyle = sel.length && sel.every((m) => m.style === sel[0].style) ? sel[0].style : state.style;
+    const isFill = shownStyle === "fill";
+    fillBox.hidden = !isFill;
+    levelSeg.style.display = isFill ? "none" : "";
+    const fsel = sel.filter((m) => m.style === "fill");
+    const color = fsel[0]?.color ?? state.color;
+    const opacity = fsel[0]?.opacity ?? state.opacity;
+    fillBox.querySelectorAll(".sw").forEach((b) => b.classList.toggle("on", b.dataset.c === color));
+    const tr = Math.round((1 - opacity) * 100);
+    fillBox.querySelector("input").value = String(tr);
+    fillBox.querySelector("output").textContent = tr ? `${tr}%` : "不透明";
+  }
+  const swWrap = fillBox.querySelector(".sws");
+  swWrap.style.display = "inline-flex";
+  swWrap.style.gap = "5px";
+  for (const [name, c] of COLORS) {
+    const b = document.createElement("button");
+    b.className = "sw";
+    b.dataset.c = c;
+    b.title = name;
+    b.setAttribute("aria-label", name);
+    b.style.background = c;
+    swWrap.appendChild(b);
+  }
+
+  function update(patch, filter = () => true) {
+    const ids = new Set(selection);
+    let changed = false;
+    masks = masks.map((m) => {
+      if (!ids.has(m.id) || !filter(m)) return m;
+      changed = true;
+      return { ...m, ...patch };
+    });
+    return changed;
+  }
+  function setStyle(v) {
+    state.style = v;
+    update({ style: v });
+    if (v === "blur") done("blur");
+    render();
+    syncBar();
+  }
+  function setLevel(v) {
+    state.level = v;
+    const changed = update({ level: v }, (m) => m.style !== "fill");
+    if (v === "weak" && changed) done("level");
+    render();
+    syncBar();
+  }
+  function setFill(patch) {
+    if (patch.color) state.color = patch.color;
+    if (patch.opacity !== undefined) state.opacity = patch.opacity;
+    const changed = update(patch, (m) => m.style === "fill");
+    if (patch.color && changed && patch.color !== "#000000") done("fill");
+    render();
+    syncBar();
+  }
+  function setSnap(v) {
+    state.snap = v;
+    hover = null;
+    hint(v === "digits" ? "<b>数字</b>：クリックで数字のかたまり、ドラッグで範囲内の数字だけ" : v === "text" ? "<b>文字</b>：数字以外の文字だけに吸着（数字は残す）" : "<b>自由</b>：ドラッグした四角をそのまま隠す");
+    syncBar();
+    render();
+  }
+  function addMasks(rects) {
+    const add = rects
+      .filter((r) => !masks.some((m) => Math.abs(m.x - r.x) < 1 && Math.abs(m.y - r.y) < 1 && Math.abs(m.w - r.w) < 1 && Math.abs(m.h - r.h) < 1))
+      .map((r) => ({ id: `m${++seq}`, x: r.x, y: r.y, w: r.w, h: r.h, style: state.style, level: state.level, color: state.color, opacity: state.opacity }));
+    if (!add.length) return 0;
+    masks = masks.concat(add);
+    selection = add.map((m) => m.id);
+    coach.hidden = true;
+    render();
+    syncBar();
+    hint(`${add.length}か所を隠しました。<b>1・2・3</b> で隠し方、<b>Delete</b> で削除`);
+    return add.length;
+  }
+  function removeMasks(ids) {
+    masks = masks.filter((m) => !ids.includes(m.id));
+    selection = selection.filter((id) => !ids.includes(id));
+    render();
+    syncBar();
+  }
+  const kindFor = () => (state.snap === "digits" ? "digit" : state.snap === "text" ? "text" : null);
+  const inside = (r, x, y) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+  const tokenAt = (x, y) => {
+    const k = kindFor();
+    return k ? tokens.find((t) => t.kind === k && inside(t, x, y)) : null;
+  };
+  const maskAt = (x, y) => [...masks].reverse().find((m) => inside(m, x, y));
+  const overlap = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+
+  const toLocal = (e) => {
+    const r = cv.getBoundingClientRect();
+    return [((e.clientX - r.left) / r.width) * W, ((e.clientY - r.top) / r.height) * H];
+  };
+  let drag = null;
+  cv.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    sb.focus({ preventScroll: true });
+    const [x, y] = toLocal(e);
+    const m = maskAt(x, y);
+    if (m && !e.altKey) {
+      selection = e.shiftKey ? [...new Set([...selection, m.id])] : [m.id];
+      drag = { kind: "move", start: [x, y], orig: masks.filter((k) => selection.includes(k.id)).map((k) => ({ id: k.id, x: k.x, y: k.y })), moved: false };
+      render();
+      syncBar();
+    } else {
+      drag = { kind: "create", start: [x, y], alt: e.altKey, moved: false };
+    }
+    cv.setPointerCapture(e.pointerId);
+  });
+  cv.addEventListener("pointermove", (e) => {
+    const [x, y] = toLocal(e);
+    if (!drag) {
+      const t = tokenAt(x, y);
+      const h = t && !maskAt(x, y) ? t : null;
+      if (h !== hover) { hover = h; drawLayer(); }
+      cv.style.cursor = maskAt(x, y) ? "move" : "crosshair";
+      return;
+    }
+    const [sx, sy] = drag.start;
+    if (Math.abs(x - sx) + Math.abs(y - sy) > 4) drag.moved = true;
+    if (drag.kind === "move" && drag.moved) {
+      const dx = x - sx, dy = y - sy;
+      masks = masks.map((m) => { const o = drag.orig.find((k) => k.id === m.id); return o ? { ...m, x: o.x + dx, y: o.y + dy } : m; });
+      render();
+    } else if (drag.kind === "create" && drag.moved) {
+      rubber = { x: Math.min(sx, x), y: Math.min(sy, y), w: Math.abs(x - sx), h: Math.abs(y - sy) };
+      drawLayer();
+    }
+  });
+  const finish = (e) => {
+    if (!drag) return;
+    const d = drag;
+    drag = null;
+    const [x, y] = toLocal(e);
+    if (d.kind === "create") {
+      const r = rubber;
+      rubber = null;
+      if (!d.moved) {
+        const t = tokenAt(x, y);
+        if (t) { if (addMasks([t]) && t.kind === "digit" && /\d-\d/.test(t.text)) done("click"); }
+        else {
+          selection = [];
+          render();
+          syncBar();
+          if (state.snap === "free") hint("<b>自由</b>モードは、ドラッグで範囲を囲んで隠します");
+        }
+        return;
+      }
+      if (!r || r.w < 3 || r.h < 3) { drawLayer(); return; }
+      let rects;
+      if (state.snap === "free" || d.alt) rects = [r];
+      else {
+        const k = kindFor();
+        rects = tokens.filter((t) => t.kind === k && overlap(t, r) >= t.w * t.h * 0.35);
+      }
+      const n = addMasks(rects);
+      if (!n) { drawLayer(); hint("範囲の中に対象の文字がありませんでした。<b>自由</b>にすると範囲そのままを隠せます"); }
+      const lines = new Set(rects.map((t) => Math.round(t.y)));
+      if (n && lines.size >= 2) done("drag");
+    }
+  };
+  cv.addEventListener("pointerup", finish);
+  cv.addEventListener("pointercancel", (e) => { drag = null; rubber = null; drawLayer(); });
+  cv.addEventListener("pointerleave", () => { if (!drag && hover) { hover = null; drawLayer(); } });
+
+  sb.querySelector(".sb-bar").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    const seg = b.closest(".seg[data-group]");
+    if (seg) {
+      const g = seg.dataset.group;
+      if (g === "style") setStyle(b.dataset.v);
+      else if (g === "level") setLevel(b.dataset.v);
+      else if (g === "snap") setSnap(b.dataset.v);
+      return;
+    }
+    if (b.classList.contains("sw")) setFill({ color: b.dataset.c });
+  });
+  fillBox.querySelector("input").addEventListener("input", (e) => setFill({ opacity: 1 - Number(e.target.value) / 100 }));
+
+  const peekBtn = document.getElementById("sbPeek");
+  const setPeek = (on) => {
+    if (state.peek === on) return;
+    state.peek = on;
+    peekBtn.classList.toggle("on", on);
+    peekBadge.hidden = !on;
+    if (on && masks.length) done("peek");
+    render();
+  };
+  peekBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); peekBtn.setPointerCapture(e.pointerId); setPeek(true); });
+  peekBtn.addEventListener("pointerup", () => setPeek(false));
+  peekBtn.addEventListener("pointercancel", () => setPeek(false));
+  peekBtn.addEventListener("contextmenu", (e) => e.preventDefault());
+  document.getElementById("sbReset").addEventListener("click", () => {
+    masks = [];
+    selection = [];
+    coach.hidden = false;
+    render();
+    syncBar();
+    hint("数字をクリック、または範囲をドラッグ");
+  });
+
+  sb.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey) return;
+    const k = e.key;
+    if (k === "1" || k === "2" || k === "3") { setStyle(["mosaic", "blur", "fill"][Number(k) - 1]); e.preventDefault(); }
+    else if (k === "[" || k === "]") {
+      const sel = masks.find((m) => selection.includes(m.id) && m.style !== "fill");
+      const cur = sel ? sel.level : state.level;
+      const i = clampI(LEVEL_ORDER.indexOf(cur) + (k === "]" ? 1 : -1), 0, 2);
+      setLevel(LEVEL_ORDER[i]);
+      hint(`程度：<b>${LEVEL_LABEL[LEVEL_ORDER[i]]}</b>`);
+      e.preventDefault();
+    } else if (k === "s" || k === "S") { const order = ["digits", "text", "free"]; setSnap(order[(order.indexOf(state.snap) + 1) % 3]); e.preventDefault(); }
+    else if ((k === "Delete" || k === "Backspace") && selection.length) { removeMasks(selection); e.preventDefault(); }
+    else if (k === "Escape") { selection = []; render(); syncBar(); }
+    else if ((k === "p" || k === "P") && !e.repeat) setPeek(true);
+  });
+  sb.addEventListener("keyup", (e) => { if (e.key === "p" || e.key === "P") setPeek(false); });
+  sb.addEventListener("blur", () => setPeek(false));
+
+  placeCoach();
+  resize();
+  syncBar();
+  addEventListener("resize", resize);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { drawBase(); render(); });
+})();
+</script>
+</body>
+</html>
