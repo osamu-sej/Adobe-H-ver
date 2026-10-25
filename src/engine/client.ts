@@ -97,8 +97,8 @@ class Engine {
     return this.call<TextResult>({ type: "text", docId, page, priority }).promise;
   }
 
-  ocrImage(docId: string, page: number, rotate: number, dpi: number, priority = 8): Promise<OcrImageResult> {
-    return this.call<OcrImageResult>({ type: "ocrImage", docId, page, rotate, dpi, priority }).promise;
+  ocrImage(docId: string, page: number, rotate: number, dpi: number, priority = 8, jpeg = false): Promise<OcrImageResult> {
+    return this.call<OcrImageResult>({ type: "ocrImage", docId, page, rotate, dpi, priority, jpeg }).promise;
   }
 
   close(docId: string) {

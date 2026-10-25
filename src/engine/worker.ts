@@ -111,8 +111,10 @@ async function handle(req: WorkerRequest & { id: number }) {
       return;
     }
     case "ocrImage": {
-      const r = ocrImage(req.docId, req.page, req.rotate, req.dpi);
-      post({ type: "result", id: req.id, ok: true, value: r }, [r.png.buffer as ArrayBuffer, r.gray.buffer as ArrayBuffer]);
+      const r = ocrImage(req.docId, req.page, req.rotate, req.dpi, !!req.jpeg);
+      const transfer = [r.png.buffer as ArrayBuffer, r.gray.buffer as ArrayBuffer];
+      if (r.jpeg) transfer.push(r.jpeg.buffer as ArrayBuffer);
+      post({ type: "result", id: req.id, ok: true, value: r }, transfer);
       return;
     }
     case "close": {
@@ -220,7 +222,7 @@ async function render(docId: string, page: number, scale: number): Promise<Rende
 }
 
 /** 文字認識用に、ページを高解像度のグレースケール画像にする（向きを変えて読むときは回転して描く） */
-function ocrImage(docId: string, page: number, rotate: number, dpi: number): OcrImageResult {
+function ocrImage(docId: string, page: number, rotate: number, dpi: number, withJpeg: boolean): OcrImageResult {
   const d = docs.get(docId);
   if (!d) throw new Error("document is not open");
   const p = d.doc.loadPage(page);
@@ -239,6 +241,7 @@ function ocrImage(docId: string, page: number, rotate: number, dpi: number): Ocr
   const h = pix.getHeight();
   // 色の付いたセルや罫線を消して、読みやすい白黒の濃淡にする
   const gray = prepareOcrImage(pix.getPixels(), w, h, pix.getStride(), k * 72);
+  const jpeg = withJpeg ? pix.asJPEG(85).slice() : undefined;
   pix.destroy();
   const out = new mupdf.Pixmap(mupdf.ColorSpace.DeviceGray, [0, 0, w, h], false);
   // 画素の配列は WASM のメモリを直接見ているので、取り出したらすぐ書く（途中でメモリが増えると見えなくなる）
@@ -247,7 +250,7 @@ function ocrImage(docId: string, page: number, rotate: number, dpi: number): Ocr
   for (let y = 0; y < h; y++) dst.set(gray.subarray(y * w, y * w + w), y * os);
   const png = out.asPNG().slice();
   out.destroy();
-  return { png, gray, width: w, height: h, toPage };
+  return { png, gray, width: w, height: h, toPage, jpeg };
 }
 
 function extractText(docId: string, page: number): TextResult {

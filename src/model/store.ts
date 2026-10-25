@@ -91,7 +91,10 @@ interface AppState extends Snapshot {
   safetyOpen: boolean;
   loading: { name: string; done: number; total: number } | null;
   /** スキャンしたページの文字認識の進み具合 */
-  ocr: { pending: number; done: number; failed: number; running: boolean };
+  /** 文字認識の進み具合。cloud は高精度の文字認識（クラウド）をオンにした文書 */
+  ocr: { pending: number; done: number; failed: number; running: boolean; cloud: string[] };
+  /** 高精度の文字認識（クラウド）の確認画面を開いている文書 */
+  cloudOcrFor: string | null;
   exportedAt: number | null;
   editedAt: number;
 }
@@ -134,7 +137,8 @@ export const useStore = create<AppState>(() => ({
   helpOpen: false,
   safetyOpen: false,
   loading: null,
-  ocr: { pending: 0, done: 0, failed: 0, running: false },
+  ocr: { pending: 0, done: 0, failed: 0, running: false, cloud: [] },
+  cloudOcrFor: null,
   exportedAt: null,
   editedAt: 0,
 }));

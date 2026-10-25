@@ -18,7 +18,7 @@ import {
 import { clampRect, normRect, toBasePoint, toBaseRect, toViewRect, viewSize } from "../model/geometry";
 import { maskFrom, suggestSameValues, suggestForSelection } from "../model/actions";
 import { rangeRects, rangeText, snapToRange, textUnder, tokenAt, type SnapResult } from "../model/text";
-import { ocrState } from "../model/ocr";
+import { ocrSource, ocrState } from "../model/ocr";
 import { ensureText, getText, isOcrPage } from "../model/texts";
 import { STYLE_LABEL, STYLE_ORDER, type Mask, type PageInfo, type Rect, type Rot } from "../model/types";
 import { pageCache, usePageBitmap } from "../render/bitmaps";
@@ -73,6 +73,7 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
   useStore((s) => s.textVersion);
   useStore((s) => s.ocr);
   const ocrSt = ocrState(docId, page);
+  const ocrFrom = ocrSource(docId, page);
   const ocrRead = isOcrPage(docId, page);
   const panel = useStore((s) => s.panel);
   const hits = useStore(
@@ -462,7 +463,9 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
             {ocrSt === "running" ? "スキャン画像の文字を認識中…" : "文字認識の順番待ち"}
           </div>
         ) : ocrRead && !peek ? (
-          <div className="page-badge ocr done">文字認識（OCR）済み・目で確認を</div>
+          <div className="page-badge ocr done">
+            {ocrFrom === "cloud" ? "クラウドで文字認識済み・目で確認を" : "文字認識（OCR）済み・目で確認を"}
+          </div>
         ) : (
           tool === "mask" && hasText === false && <div className="page-badge">画像のみ・範囲指定で隠せます</div>
         )}

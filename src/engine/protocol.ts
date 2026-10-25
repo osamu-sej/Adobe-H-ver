@@ -33,6 +33,8 @@ export interface OcrImageResult {
   height: number;
   /** 画像の画素 → 元ページ空間（pt）の変換行列 [a, b, c, d, e, f] */
   toPage: [number, number, number, number, number, number];
+  /** 整える前のカラーの画像（JPEG）。高精度の文字認識（クラウド）に送るときだけ作る */
+  jpeg?: Uint8Array;
 }
 
 export interface ExportMask extends Rect {
@@ -145,7 +147,7 @@ export type WorkerRequest =
   | { type: "open"; id: number; docId: string; bytes: Uint8Array; password?: string }
   | { type: "render"; id: number; docId: string; page: number; scale: number; priority: number }
   | { type: "text"; id: number; docId: string; page: number; priority: number }
-  | { type: "ocrImage"; id: number; docId: string; page: number; rotate: number; dpi: number; priority: number }
+  | { type: "ocrImage"; id: number; docId: string; page: number; rotate: number; dpi: number; priority: number; jpeg?: boolean }
   | { type: "close"; id: number; docId: string }
   | { type: "export"; id: number; job: ExportJob }
   | { type: "cancel"; ids: number[] };

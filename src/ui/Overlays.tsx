@@ -3,9 +3,10 @@ import { BUILD, BUILD_LABEL, VERSION_LABEL } from "../buildInfo";
 import { applySuggestion, openSample } from "../model/actions";
 import { clearSavedWork } from "../model/autosave";
 import { dismissToast, toast, useStore } from "../model/store";
-import { ocrState } from "../model/ocr";
+import { ocrState, scannedPageCount } from "../model/ocr";
+import { cloudKey, saveCloudKey } from "../model/cloudOcr";
 import { isOcrPage, pageHasText } from "../model/texts";
-import { IconAlert, IconCheck, IconFolderOpen, IconLock, IconShield, IconWand, IconX } from "./icons";
+import { IconAlert, IconCheck, IconCloud, IconFolderOpen, IconLock, IconShield, IconWand, IconX } from "./icons";
 
 // ---- 通知 ----
 
@@ -207,7 +208,7 @@ export function HelpOverlay() {
         <div className="modal-foot">
           <div className="foot-note">
             <span className="muted small">
-              <IconShield size={13} /> PDFはこの端末の中だけで処理され、外部には送信されません。
+              <IconShield size={13} /> PDFはこの端末の中だけで処理され、外部には送信されません（高精度の文字認識（クラウド）を選んだときだけ、スキャンしたページの画像を送ります）。
             </span>
             <span className="app-version" title="バージョン（ビルド日時・元になったコミット）">
               カクス {VERSION_LABEL}（{BUILD_LABEL}）
@@ -228,6 +229,24 @@ export function HelpOverlay() {
 }
 
 // ---- 安全性について ----
+
+/** このブラウザに保存した、高精度の文字認識（クラウド）のAPIキー */
+function CloudKeyRow() {
+  const [saved, setSaved] = useState(() => !!cloudKey());
+  if (!saved) return <p className="muted small">このブラウザにはAPIキーは保存されていません。</p>;
+  return (
+    <button
+      className="btn ghost sm"
+      onClick={() => {
+        saveCloudKey("");
+        setSaved(false);
+        toast({ message: "このブラウザに保存したAPIキーを消去しました" });
+      }}
+    >
+      保存したAPIキーを消去
+    </button>
+  );
+}
 
 const SOURCE_URL = "https://github.com/osamu-sej/Adobe-H-ver";
 
@@ -260,19 +279,22 @@ export function SafetyDialog() {
         <div className="modal-body">
           <p className="safety-lead">
             取り込んだPDFは、<b>お使いのパソコンのブラウザの中だけ</b>で処理されます。インターネット上のどこにも送信されません。
+            ただし、<b>高精度の文字認識（クラウド）</b>をご自身で選んだ文書だけは、スキャンしたページの画像を Google Cloud Vision に送ります。
           </p>
 
           <section className="safety-sec">
             <h3>しくみ</h3>
             <p>
-              このサイトから届くのは「ツールのプログラム」だけです。PDFの表示・加工・書き出しは、ブラウザに読み込んだPDFエンジン（MuPDF）が手元で行い、書き出したファイルも手元に保存されます。スキャンしたページの文字認識（OCR）も、このサイトから届く認識エンジンが手元で行います。サーバーはツールを配るだけで、PDFを受け取る仕組みはありません。
+              このサイトから届くのは「ツールのプログラム」だけです。PDFの表示・加工・書き出しは、ブラウザに読み込んだPDFエンジン（MuPDF）が手元で行い、書き出したファイルも手元に保存されます。スキャンしたページの文字認識（OCR）も、ふだんはこのサイトから届く認識エンジンが手元で行います。サーバーはツールを配るだけで、PDFを受け取る仕組みはありません。
             </p>
           </section>
 
           <section className="safety-sec">
             <h3>送らないことの保証</h3>
             <ul>
-              <li>外部への通信を禁止する設定（コンテンツセキュリティポリシー）を組み込んでいます。万一プログラムが送ろうとしても、ブラウザがブロックします。</li>
+              <li>
+                外部への通信を禁止する設定（コンテンツセキュリティポリシー）を組み込んでいます。許しているのは高精度の文字認識（クラウド）の送り先（Google Cloud Vision）だけで、それ以外へはプログラムが送ろうとしてもブラウザがブロックします。
+              </li>
               <li>
                 回線を切った状態でも、PDFを開く・隠す・書き出す・検証するまで動作します（スキャンしたページの文字認識だけは、初めて使うときに認識用の部品をこのサイトから読み込みます）。
               </li>
@@ -299,6 +321,15 @@ export function SafetyDialog() {
           </section>
 
           <section className="safety-sec">
+            <h3>高精度の文字認識（クラウド）</h3>
+            <p>
+              端末内の文字認識では読み落としがある資料（色付きの表・小さな文字・手書きなど）のために、Google Cloud Vision で読む方法を用意しています。
+              <b>ふだんはオフ</b>で、文書ごとに送る枚数と送り先を確かめてから、ご自身のAPIキーで送ります。送るのはスキャンしたページの画像だけで、文字情報のあるページ・PDFファイルそのもの・ファイル名は送りません。Google は送られた画像を学習には使いません（Google Cloud の規約）。社外秘の資料は、外部のサービスに送ってよいか社内のルールを確かめてください。
+            </p>
+            <CloudKeyRow />
+          </section>
+
+          <section className="safety-sec">
             <h3>ご自身で確かめる方法</h3>
             <ol>
               <li>このページを開いたあと、Wi-Fiを切る（または機内モードにする）。そのままPDFを開いて、隠して、書き出せることを確かめる。</li>
@@ -311,7 +342,7 @@ export function SafetyDialog() {
           <section className="safety-sec">
             <h3>この端末に残るもの</h3>
             <p>
-              作業の自動保存として、<b>ファイル名とマスクの位置だけ</b>がこのブラウザに残ります（PDF本体と隠した文字は残りません）。共用のパソコンでは、使い終わったら消去してください。
+              作業の自動保存として、<b>ファイル名とマスクの位置だけ</b>がこのブラウザに残ります（PDF本体と隠した文字は残りません）。高精度の文字認識（クラウド）を使った場合は、APIキーと今月送った枚数も残ります。共用のパソコンでは、使い終わったら消去してください。
             </p>
             <button
               className="btn ghost sm"
@@ -382,6 +413,7 @@ export function EmptyState({ onOpen }: { onOpen: () => void }) {
               <li>外部への通信はブラウザが禁止</li>
               <li>回線を切っても使えます</li>
             </ul>
+            <span className="safety-card-note">高精度の文字認識（クラウド）を選んだ文書だけ、スキャンしたページの画像を送ります</span>
           </div>
           <button className="btn ghost sm" onClick={() => useStore.setState({ safetyOpen: true })}>
             安全性について
@@ -430,6 +462,8 @@ export function StatusBar() {
   const ocrHere = current ? ocrState(current.docId, current.page) : undefined;
   const ocrRead = current ? isOcrPage(current.docId, current.page) : false;
   const ocrTotal = ocr.pending + ocr.done + ocr.failed;
+  const scanned = current ? scannedPageCount(current.docId) : 0;
+  const cloudOn = current ? ocr.cloud.includes(current.docId) : false;
 
   let hint = "";
   if (peek) hint = "原本を表示中（マスクは書き出し時に適用されます）";
@@ -456,18 +490,44 @@ export function StatusBar() {
       </span>
       <span className="sb-hint">{hint}</span>
       {ocr.pending > 0 && (
-        <span className="sb-ocr" title="スキャンしたページの文字を、この端末の中で認識しています（外部には送信しません）">
+        <span
+          className="sb-ocr"
+          title={
+            ocr.cloud.length
+              ? "スキャンしたページの文字を認識しています（高精度をオンにした文書は Google Cloud Vision で読みます）"
+              : "スキャンしたページの文字を、この端末の中で認識しています（外部には送信しません）"
+          }
+        >
           <i className="spinner" aria-hidden="true" />
           文字認識中 {ocr.done}/{ocrTotal}
         </span>
       )}
-      <button
-        className="sb-privacy"
-        title="PDFはブラウザの中だけで処理され、外部には送信されません（クリックで詳しく）"
-        onClick={() => useStore.setState({ safetyOpen: true })}
-      >
-        <IconShield size={13} /> 端末内で処理
-      </button>
+      {scanned > 0 && !cloudOn && (
+        <button
+          className="sb-cloud"
+          title="スキャンしたページを Google Cloud Vision で読み直します（送る前に確認します）"
+          onClick={() => useStore.setState({ cloudOcrFor: current!.docId })}
+        >
+          <IconCloud size={13} /> 高精度で読む
+        </button>
+      )}
+      {cloudOn ? (
+        <button
+          className="sb-privacy cloud"
+          title="この文書のスキャンしたページは Google Cloud Vision で読んでいます。PDFそのものは送っていません（クリックで詳しく）"
+          onClick={() => useStore.setState({ safetyOpen: true })}
+        >
+          <IconCloud size={13} /> スキャンはクラウドで認識
+        </button>
+      ) : (
+        <button
+          className="sb-privacy"
+          title="PDFはブラウザの中だけで処理され、外部には送信されません（クリックで詳しく）"
+          onClick={() => useStore.setState({ safetyOpen: true })}
+        >
+          <IconShield size={13} /> 端末内で処理
+        </button>
+      )}
     </footer>
   );
 }
