@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { BUILD, BUILD_LABEL, VERSION_LABEL } from "../buildInfo";
 import { applySuggestion, openSample } from "../model/actions";
 import { clearSavedWork } from "../model/autosave";
 import { dismissToast, toast, useStore } from "../model/store";
@@ -204,9 +205,14 @@ export function HelpOverlay() {
           ))}
         </div>
         <div className="modal-foot">
-          <span className="muted small">
-            <IconShield size={13} /> PDFはこの端末の中だけで処理され、外部には送信されません。
-          </span>
+          <div className="foot-note">
+            <span className="muted small">
+              <IconShield size={13} /> PDFはこの端末の中だけで処理され、外部には送信されません。
+            </span>
+            <span className="app-version" title="バージョン（ビルド日時・元になったコミット）">
+              カクス {VERSION_LABEL}（{BUILD_LABEL}）
+            </span>
+          </div>
           <div className="foot-actions">
             <a className="btn ghost sm" href="manual/" target="_blank" rel="noopener">
               使い方ガイド（動画つき）
@@ -276,6 +282,18 @@ export function SafetyDialog() {
                   GitHub
                 </a>
                 ）。
+              </li>
+              <li>
+                このページは {VERSION_LABEL}（{BUILD.date} ビルド）です。
+                {BUILD.commit && (
+                  <>
+                    元になったソースコードは
+                    <a href={`${SOURCE_URL}/commit/${BUILD.commit}`} target="_blank" rel="noopener noreferrer">
+                      {BUILD.commit}
+                    </a>
+                    で確認できます。
+                  </>
+                )}
               </li>
             </ul>
           </section>
@@ -386,6 +404,9 @@ export function EmptyState({ onOpen }: { onOpen: () => void }) {
         <a className="manual-link" href="manual/" target="_blank" rel="noopener">
           使い方ガイドを見る（動画とお試しつき）→
         </a>
+        <span className="app-version" title={`ビルド ${BUILD_LABEL}`}>
+          {VERSION_LABEL} · {BUILD.date} 更新
+        </span>
       </div>
     </div>
   );

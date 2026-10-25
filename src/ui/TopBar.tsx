@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { BUILD_LABEL, VERSION_LABEL } from "../buildInfo";
 import { redo, toast, undo, updateMasks, useStore } from "../model/store";
 import {
   LEVEL_HINT,
@@ -139,7 +140,7 @@ export function TopBar({ onOpen }: { onOpen: () => void }) {
         >
           <IconSidebar />
         </button>
-        <div className="brand" title="カクス — PDFモザイク・墨消し">
+        <div className="brand" title={`カクス ${VERSION_LABEL}（${BUILD_LABEL}）— PDFモザイク・墨消し`}>
           <span className="brand-mark" aria-hidden="true">
             <i />
             <i />

@@ -1904,6 +1904,16 @@ input[type="radio"] {
   display: flex;
   gap: 8px;
 }
+.foot-note {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.app-version {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 a.btn {
   text-decoration: none;
 }
