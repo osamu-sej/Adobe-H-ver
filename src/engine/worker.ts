@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 import wasmUrl from "../../node_modules/mupdf/dist/mupdf-wasm.wasm?url";
-import type { OpenResult, RenderResult, TextResult, WorkerRequest, WorkerResponse } from "./protocol";
+import type { OcrImageResult, OpenResult, RenderResult, TextResult, WorkerRequest, WorkerResponse } from "./protocol";
 import { runExport } from "./exporter";
 import { extractPageText } from "./textExtract";
 
@@ -109,6 +109,11 @@ async function handle(req: WorkerRequest & { id: number }) {
       post({ type: "result", id: req.id, ok: true, value: t }, [t.boxes.buffer, t.lines.buffer, t.sizes.buffer]);
       return;
     }
+    case "ocrImage": {
+      const r = ocrImage(req.docId, req.page, req.rotate, req.dpi);
+      post({ type: "result", id: req.id, ok: true, value: r }, [r.png.buffer as ArrayBuffer]);
+      return;
+    }
     case "close": {
       const d = docs.get(req.docId);
       if (d) {
@@ -213,6 +218,28 @@ async function render(docId: string, page: number, scale: number): Promise<Rende
   return { bitmap, width: w, height: h, scale };
 }
 
+/** 文字認識用に、ページを高解像度のグレースケール画像にする（向きを変えて読むときは回転して描く） */
+function ocrImage(docId: string, page: number, rotate: number, dpi: number): OcrImageResult {
+  const d = docs.get(docId);
+  if (!d) throw new Error("document is not open");
+  const p = d.doc.loadPage(page);
+  const b = p.getBounds();
+  p.destroy();
+  const area = Math.max(1, (b[2] - b[0]) * (b[3] - b[1]));
+  const k = Math.min(dpi / 72, Math.sqrt(14_000_000 / area));
+  const m = mupdf.Matrix.concat(mupdf.Matrix.scale(k, k), mupdf.Matrix.rotate(rotate));
+  const pix = getDisplayList(docId, page).toPixmap(m, mupdf.ColorSpace.DeviceGray, false);
+  const png = pix.asPNG();
+  // 画素 (u, v) → 描画空間 (u + x, v + y) → ページ空間 → 左上を原点にした元ページ空間
+  const toPage = mupdf.Matrix.concat(
+    mupdf.Matrix.concat(mupdf.Matrix.translate(pix.getX(), pix.getY()), mupdf.Matrix.invert(m)),
+    mupdf.Matrix.translate(-b[0], -b[1]),
+  ) as OcrImageResult["toPage"];
+  const r = { png: png.slice(), width: pix.getWidth(), height: pix.getHeight(), toPage };
+  pix.destroy();
+  return r;
+}
+
 function extractText(docId: string, page: number): TextResult {
   const d = docs.get(docId);
   if (!d) throw new Error("document is not open");
@@ -247,6 +274,7 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
       return;
     case "render":
     case "text":
+    case "ocrImage":
       enqueue(req, req.priority);
       return;
   }

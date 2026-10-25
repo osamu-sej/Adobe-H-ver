@@ -55,6 +55,7 @@ function SearchTab() {
   }, [textVersion]); // 検索条件の変更は setSearch 側で検索し直す
 
   const progress = textProgress();
+  const ocr = useStore((s) => s.ocr);
   const excluded = useMemo(() => new Set(search.excluded), [search.excluded]);
   const covered = useMemo(
     () => new Set(search.hits.filter((h) => h.rects.every((r) => isCovered(masks, h.docId, h.page, r))).map((h) => h.key)),
@@ -150,6 +151,11 @@ function SearchTab() {
       {progress.loaded < progress.total && (
         <div className="muted small">
           文字を読み込み中… {progress.loaded}/{progress.total}ページ
+        </div>
+      )}
+      {ocr.pending > 0 && (
+        <div className="muted small">
+          スキャンしたページの文字を認識中… {ocr.done}/{ocr.done + ocr.pending + ocr.failed}ページ（終わったページから検索できます）
         </div>
       )}
 

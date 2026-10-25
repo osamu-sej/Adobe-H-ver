@@ -868,7 +868,7 @@ footer { border-top: 1px solid var(--line); padding: 28px; text-align: center; f
         <div class="crop"><img src="img/snap-free.webp" width="900" height="146" alt="自由モード：なぞった四角の範囲がそのまま隠れている" loading="lazy" /></div>
         <p class="cap"><b>自由</b>：なぞった四角の範囲をそのまま隠します（<kbd>Alt</kbd>＋ドラッグと同じ）。</p>
       </div>
-      <div class="note"><span class="ni">📄</span><span><b>スキャンしたPDF</b>（文字情報のない画像のページ）では、ドラッグした範囲をそのまま隠します。</span></div>
+      <div class="note"><span class="ni">📄</span><span><b>スキャンしたPDF</b>（紙を読み込んだ、文字情報のない画像のページ）は、開くと自動で<b>文字認識（OCR）</b>して、ふつうのPDFと同じように数字に吸着できるようにします。表示中のページから順に、1ページ数秒で終わります（終わるまでは範囲をそのまま隠せます）。認識は端末の中で行い、外には送りません。読み取りは完全ではないので、書き出したPDFは目で確認してください。</span></div>
     </section>
 
     <!-- 3 隠し方 -->
@@ -1128,7 +1128,7 @@ footer { border-top: 1px solid var(--line); padding: 28px; text-align: center; f
         </details>
         <details>
           <summary>スキャンしたPDF（紙を読み込んだもの）でも使えますか？</summary>
-          <div>使えます。文字情報のないページでは、ドラッグした範囲をそのまま隠します（数字への自動吸着や検索は、文字情報のあるPDFで使えます）。</div>
+          <div>使えます。文字情報のないページは自動で文字認識（OCR）するので、数字への吸着や検索・プリセットもそのまま使えます。横向きに貼られた資料も向きを判断して読みます。認識はこの端末の中で行い、外には送りません。ただし読み取りは完全ではない（細い「1」や写真の上の文字などは読み落とすことがある）ので、書き出したPDFを目で確認してください。認識が終わるまでや読めなかった部分は、範囲をなぞってそのまま隠せます。</div>
         </details>
         <details>
           <summary>途中でブラウザを閉じてしまったら？</summary>

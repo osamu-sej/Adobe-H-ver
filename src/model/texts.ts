@@ -1,10 +1,13 @@
 import { engine } from "../engine/client";
+import { dropOcr, requestOcr } from "./ocr";
 import { useStore } from "./store";
 import { buildIndex, type TextIndex } from "./text";
 
 /** ページごとの文字層（大きいので状態管理の外に置き、更新は textVersion で知らせる） */
 const indexes = new Map<string, TextIndex>();
 const inflight = new Map<string, Promise<TextIndex>>();
+/** 文字認識（OCR）で文字層を作ったページ */
+const ocrPages = new Set<string>();
 
 const key = (docId: string, page: number) => `${docId}:${page}`;
 
@@ -34,6 +37,15 @@ export function ensureText(docId: string, page: number, priority = 3): Promise<T
       indexes.set(k, idx);
       inflight.delete(k);
       bump();
+      // 文字がなく画像だけのページ（スキャン）は、文字認識で文字層を作る
+      if ((t.images ?? 0) > 0 && !t.chars.some((c) => c.trim() !== "")) {
+        requestOcr(docId, page, (text) => {
+          if (!indexes.has(k)) return; // 認識中に閉じた
+          indexes.set(k, buildIndex(text));
+          ocrPages.add(k);
+          bump();
+        });
+      }
       return idx;
     })
     .catch((e) => {
@@ -51,6 +63,19 @@ export function loadAllTexts(docId: string, pageCount: number) {
 
 export function dropTexts(docId: string) {
   for (const k of [...indexes.keys()]) if (k.startsWith(docId + ":")) indexes.delete(k);
+  for (const k of [...ocrPages]) if (k.startsWith(docId + ":")) ocrPages.delete(k);
+  dropOcr(docId);
+}
+
+/** 文字認識で読み取ったページか（取りこぼしがあり得るので、目での確認を促す） */
+export function isOcrPage(docId: string, page: number): boolean {
+  return ocrPages.has(key(docId, page));
+}
+
+export function ocrPageCount(docId: string): number {
+  let n = 0;
+  for (const k of ocrPages) if (k.startsWith(docId + ":")) n++;
+  return n;
 }
 
 export function textProgress(): { loaded: number; total: number } {

@@ -4,6 +4,7 @@ import { resolveStrength } from "../fx/effects";
 import { engine } from "../engine/client";
 import type { EncryptionOptions, ExportFile, ExportJob, Permissions } from "../engine/protocol";
 import { toast, useStore } from "../model/store";
+import { ocrPageCount } from "../model/texts";
 import { IconAlert, IconCheck, IconDownload, IconLayers, IconLock, IconShield, IconX } from "./icons";
 
 const DEFAULT_PERMS: Permissions = {
@@ -410,7 +411,7 @@ function ExportDialogInner() {
         {phase.kind === "done" && (
           <>
             <div className="modal-body">
-              <Report files={phase.files} />
+              <Report files={phase.files} ocrPages={selectedDocs.reduce((n, id) => n + ocrPageCount(id), 0)} />
             </div>
             <div className="modal-foot">
               <div className="muted small">ダウンロードが始まらない場合は、各ファイルの「保存」を押してください。</div>
@@ -449,7 +450,7 @@ function saveAll(files: ExportFile[]) {
   download(`墨消し済_${stamp()}.zip`, zip, "application/zip");
 }
 
-function Report({ files }: { files: ExportFile[] }) {
+function Report({ files, ocrPages }: { files: ExportFile[]; ocrPages: number }) {
   const allPassed = files.every((f) => f.report.passed);
   const kept = files.some((f) => f.report.textKept);
   return (
@@ -467,6 +468,15 @@ function Report({ files }: { files: ExportFile[] }) {
           </span>
         </div>
       </div>
+      {ocrPages > 0 && (
+        <div className="report-note">
+          <IconAlert size={16} />
+          <span>
+            スキャンした画像のページが<b>{ocrPages}ページ</b>あり、数字は文字認識（OCR）で探しました。画像の中の数字は上の自動検証では確かめられないので、
+            <b>取りこぼしがないか書き出したPDFを目で確認してください。</b>
+          </span>
+        </div>
+      )}
       {files.map((f) => {
         const r = f.report;
         const metaLeft = Object.entries(r.metadata);
