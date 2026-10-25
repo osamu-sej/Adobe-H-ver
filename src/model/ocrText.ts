@@ -288,10 +288,12 @@ function snapGroup(words: OcrWord[], img: GrayImage, others: OcrBox[]): OcrWord[
   // 単語の上下の範囲は、2行にまたがっていることがあるので、まとめた単語の中ほどの値を使う
   const y0 = median(words.map((w) => w.bbox.y0));
   const y1 = median(words.map((w) => w.bbox.y1));
-  const h = y1 - y0;
-  if (h < 4) return words;
+  if (y1 - y0 < 4) return words;
   const x0 = Math.min(...words.map((w) => w.bbox.x0));
   const x1 = Math.max(...words.map((w) => w.bbox.x1));
+  // 文字の高さはインクから測る（1文字だけの単語の枠は上下に余白を含んで高いことがある）
+  const rows = inkRows(img, x0, x1, y0, y1);
+  const h = rows && rows.y1 - rows.y0 >= 4 ? rows.y1 - rows.y0 : y1 - y0;
   // 幅のない記号（「2」に重なった「」」など）は読み違いのかけら。割り当てに使わず、そのままにする。
   // 数字は幅がなくても、読めた数字の分のインクがあるはずなので使う
   const order = words.flatMap((w, wi) =>
@@ -344,11 +346,26 @@ function snapGroup(words: OcrWord[], img: GrayImage, others: OcrBox[]): OcrWord[
       // 数字は1つのまとまりで、漢字ほどの幅はない（単語の枠ごとずれて、数字が隣の「年」を取らないように）
       c += EXTRA_COST * (b - a - 1);
       if (widest > wideW) c += WIDE_COST;
-    } else if (ideograph[j] && segs[b - 1].x1 - segs[a].x0 < h * 0.55) c += NARROW_COST; // 漢字の幅に足りない
+    } else {
+      if (ideograph[j] && segs[b - 1].x1 - segs[a].x0 < h * 0.55) c += NARROW_COST; // 漢字の幅に足りない
+      // 数字の隣の端にある数字ほどの幅のまとまりは、数字に回す（「10月」を「1月」と読んだときの「0」などが、
+      // 隣の漢字に含まれて隠れ残らないように。漢字の一部を隠しすぎるほうがよい）
+      const digitLike = (g: Segment) => g.x1 - g.x0 <= wideW;
+      if (b - a > 1 && isDigitSym[j + 1] && digitLike(segs[b - 1])) c += EXTRA_COST * 2;
+      if (b - a > 1 && isDigitSym[j - 1] && digitLike(segs[a])) c += EXTRA_COST * 2;
+    }
     return c;
   };
-  // 文字の中心からの、割り当てたインクの中心のずれ（文字の高さに対して）
-  const shift = (j: number, a: number, b: number) => ((segs[a].x0 + segs[b - 1].x1) / 2 - symC[j]) / h;
+  // 認識の位置からの、割り当てたインクのずれ（文字の高さに対して）。数字の認識の枠がインクより広いとき
+  // （「2005年」の「5」の枠が「年」の先まで広がっているなど）は、枠の中に収まればずれなしとみなす。
+  // 漢字などは、広い枠のまま隣の数字のインクを取らないよう、中心からのずれで見る
+  const shift = (j: number, a: number, b: number) => {
+    const half = (segs[b - 1].x1 - segs[a].x0) / 2;
+    const c = segs[a].x0 + half;
+    const lo = order[j].s.bbox.x0 + half;
+    const hi = order[j].s.bbox.x1 - half;
+    return (c - (isDigitSym[j] && lo <= hi ? Math.min(Math.max(c, lo), hi) : symC[j])) / h;
+  };
   // 動的計画法で、文字ごとに左から順に、続いたまとまり（1〜MAX_BLOBS個）を割り当てるか飛ばす。
   // 位置のずれそのものより、ずれ方が隣の文字と変わることを重く見る（単語の枠ごとずれていても、まとめてずらして合わせられる）。
   // 状態 (j, i, l)：j 文字目まで、i 個目のまとまりまで割り当て済みで、直前の文字が l 個のまとまりを取った（0 は飛ばした）
@@ -431,8 +448,10 @@ function snapGroup(words: OcrWord[], img: GrayImage, others: OcrBox[]): OcrWord[
   order.forEach(({ s, wi, si }, k) => {
     const r = ranges[k];
     if (!r) return;
-    // 大きく動く割り当ては誤りとみなして元のまま
-    if (Math.abs((r.x0 + r.x1) / 2 - symC[k]) > h * 1.2) return;
+    // 認識の位置から大きく離れる割り当ては誤りとみなして元のまま。
+    // 認識の枠の中に収まるなら、枠が広すぎた（「2005年」の「5」が「年」の先まで広がっているなど）だけなので直す
+    const within = r.x0 >= s.bbox.x0 - h * 0.2 && r.x1 <= s.bbox.x1 + h * 0.2;
+    if (!within && Math.abs((r.x0 + r.x1) / 2 - symC[k]) > h * 1.2) return;
     const w = words[wi].bbox;
     const v = inkRows(img, r.x0, r.x1, w.y0, w.y1);
     out[wi].symbols[si] = { ...s, bbox: { x0: r.x0, x1: r.x1, y0: v ? v.y0 : w.y0, y1: v ? v.y1 : w.y1 } };
