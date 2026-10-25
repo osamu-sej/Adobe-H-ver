@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { applySuggestion, openSample } from "../model/actions";
 import { clearSavedWork } from "../model/autosave";
 import { dismissToast, toast, useStore } from "../model/store";
-import { pageHasText } from "../model/texts";
+import { ocrState } from "../model/ocr";
+import { isOcrPage, pageHasText } from "../model/texts";
 import { IconAlert, IconCheck, IconFolderOpen, IconLock, IconShield, IconWand, IconX } from "./icons";
 
 // ---- 通知 ----
@@ -258,7 +259,7 @@ export function SafetyDialog() {
           <section className="safety-sec">
             <h3>しくみ</h3>
             <p>
-              このサイトから届くのは「ツールのプログラム」だけです。PDFの表示・加工・書き出しは、ブラウザに読み込んだPDFエンジン（MuPDF）が手元で行い、書き出したファイルも手元に保存されます。サーバーはツールを配るだけで、PDFを受け取る仕組みはありません。
+              このサイトから届くのは「ツールのプログラム」だけです。PDFの表示・加工・書き出しは、ブラウザに読み込んだPDFエンジン（MuPDF）が手元で行い、書き出したファイルも手元に保存されます。スキャンしたページの文字認識（OCR）も、このサイトから届く認識エンジンが手元で行います。サーバーはツールを配るだけで、PDFを受け取る仕組みはありません。
             </p>
           </section>
 
@@ -266,7 +267,9 @@ export function SafetyDialog() {
             <h3>送らないことの保証</h3>
             <ul>
               <li>外部への通信を禁止する設定（コンテンツセキュリティポリシー）を組み込んでいます。万一プログラムが送ろうとしても、ブラウザがブロックします。</li>
-              <li>回線を切った状態でも、PDFを開く・隠す・書き出す・検証するまで、すべて動作します。</li>
+              <li>
+                回線を切った状態でも、PDFを開く・隠す・書き出す・検証するまで動作します（スキャンしたページの文字認識だけは、初めて使うときに認識用の部品をこのサイトから読み込みます）。
+              </li>
               <li>
                 ソースコードは公開されており、誰でも中身を確認できます（
                 <a href={SOURCE_URL} target="_blank" rel="noopener noreferrer">
@@ -399,16 +402,24 @@ export function StatusBar() {
   const peek = useStore((s) => s.peek);
   const selection = useStore((s) => s.selection.length);
   useStore((s) => s.textVersion);
+  const ocr = useStore((s) => s.ocr);
   const d = current ? docs[current.docId] : undefined;
   const idx = current ? layouts[current.docId]?.order.indexOf(current.page) ?? -1 : -1;
   const noText = current ? pageHasText(current.docId, current.page) === false : false;
+  const ocrHere = current ? ocrState(current.docId, current.page) : undefined;
+  const ocrRead = current ? isOcrPage(current.docId, current.page) : false;
+  const ocrTotal = ocr.pending + ocr.done + ocr.failed;
 
   let hint = "";
   if (peek) hint = "原本を表示中（マスクは書き出し時に適用されます）";
   else if (tool === "hand") hint = "ドラッグでスクロール";
   else if (tool === "select") hint = "クリックで選択 · ドラッグで範囲選択 · Delete で削除 · 矢印で微調整";
   else if (selection) hint = "1〜3 で隠し方を変更 · [ ] で程度（弱・中・強） · Delete で削除 · 矢印で微調整 · Esc で選択解除";
+  else if (ocrHere === "queued" || ocrHere === "running")
+    hint = "スキャンしたページの文字を認識しています…（終わると数字に吸着できます。今は範囲をなぞって隠せます）";
   else if (noText) hint = "このページは画像のみ（文字情報なし）：ドラッグした範囲をそのまま隠します";
+  else if (ocrRead && snap !== "free")
+    hint = "文字認識（OCR）で読み取ったページです。取りこぼしがないか目で確認してください · ドラッグ：範囲内の" + (snap === "digits" ? "数字" : "文字") + "だけを隠す · Alt+ドラッグ：範囲そのまま";
   else if (snap === "digits") hint = "ドラッグ：範囲内の数字だけを隠す · クリック：数字のかたまりを隠す · Alt+ドラッグ：範囲そのまま · P長押し：原本";
   else if (snap === "text") hint = "ドラッグ：範囲内の文字だけを隠す（数字は残す） · クリック：単語を隠す · Alt+ドラッグ：範囲そのまま";
   else hint = "ドラッグした範囲をそのまま隠す";
@@ -423,6 +434,12 @@ export function StatusBar() {
         ) : null}
       </span>
       <span className="sb-hint">{hint}</span>
+      {ocr.pending > 0 && (
+        <span className="sb-ocr" title="スキャンしたページの文字を、この端末の中で認識しています（外部には送信しません）">
+          <i className="spinner" aria-hidden="true" />
+          文字認識中 {ocr.done}/{ocrTotal}
+        </span>
+      )}
       <button
         className="sb-privacy"
         title="PDFはブラウザの中だけで処理され、外部には送信されません（クリックで詳しく）"

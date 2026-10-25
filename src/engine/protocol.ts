@@ -20,6 +20,17 @@ export interface TextResult {
   boxes: Float32Array;
   lines: Int32Array;
   sizes: Float32Array;
+  /** ページ上の画像の数（文字がなく画像だけのページは文字認識の対象にする） */
+  images?: number;
+}
+
+/** 文字認識用のページ画像（グレースケールPNG） */
+export interface OcrImageResult {
+  png: Uint8Array;
+  width: number;
+  height: number;
+  /** 画像の画素 → 元ページ空間（pt）の変換行列 [a, b, c, d, e, f] */
+  toPage: [number, number, number, number, number, number];
 }
 
 export interface ExportMask extends Rect {
@@ -132,6 +143,7 @@ export type WorkerRequest =
   | { type: "open"; id: number; docId: string; bytes: Uint8Array; password?: string }
   | { type: "render"; id: number; docId: string; page: number; scale: number; priority: number }
   | { type: "text"; id: number; docId: string; page: number; priority: number }
+  | { type: "ocrImage"; id: number; docId: string; page: number; rotate: number; dpi: number; priority: number }
   | { type: "close"; id: number; docId: string }
   | { type: "export"; id: number; job: ExportJob }
   | { type: "cancel"; ids: number[] };

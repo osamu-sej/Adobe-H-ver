@@ -4,13 +4,17 @@ import type { TextResult } from "./protocol";
 /** ページの文字と外接矩形を取り出す（座標はページ原点基準のpt） */
 export function extractPageText(page: M.Page): TextResult {
   const b = page.getBounds();
-  const st = page.toStructuredText("preserve-whitespace");
+  const st = page.toStructuredText("preserve-whitespace,preserve-images");
+  let images = 0;
   const chars: string[] = [];
   const boxes: number[] = [];
   const lines: number[] = [];
   const sizes: number[] = [];
   let line = -1;
   st.walk({
+    onImageBlock() {
+      images++;
+    },
     beginLine() {
       line++;
     },
@@ -32,5 +36,6 @@ export function extractPageText(page: M.Page): TextResult {
     boxes: new Float32Array(boxes),
     lines: new Int32Array(lines),
     sizes: new Float32Array(sizes),
+    images,
   };
 }

@@ -1211,6 +1211,40 @@ input[type="radio"] {
   color: var(--ok);
   white-space: nowrap;
 }
+.sb-ocr {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 12px;
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.spinner {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: spin 0.8s linear infinite;
+  flex: none;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* スキャンしたページの文字認識 */
+.page-badge.ocr {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.page-badge.ocr.done {
+  background: rgba(31, 143, 78, 0.85);
+}
 
 /* ===== 提案・通知 ===== */
 .suggestion {
@@ -1650,6 +1684,23 @@ input[type="radio"] {
 .report-banner.ng {
   background: var(--warn-soft);
   color: var(--warn);
+}
+.report-note {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.report-note span {
+  color: var(--text-2);
+}
+.report-note b {
+  color: var(--text);
 }
 .report-file {
   border: 1px solid var(--line);

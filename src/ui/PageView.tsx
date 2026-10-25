@@ -18,7 +18,8 @@ import {
 import { clampRect, normRect, toBasePoint, toBaseRect, toViewRect, viewSize } from "../model/geometry";
 import { maskFrom, suggestSameValues, suggestForSelection } from "../model/actions";
 import { rangeRects, rangeText, snapToRange, textUnder, tokenAt, type SnapResult } from "../model/text";
-import { ensureText, getText } from "../model/texts";
+import { ocrState } from "../model/ocr";
+import { ensureText, getText, isOcrPage } from "../model/texts";
 import { STYLE_LABEL, STYLE_ORDER, type Mask, type PageInfo, type Rect, type Rot } from "../model/types";
 import { pageCache, usePageBitmap } from "../render/bitmaps";
 import { paintMasks, paintPage, type PaintMask } from "../render/paint";
@@ -70,6 +71,9 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
   const defOpacity = useStore((s) => s.fillOpacity);
   const defLabel = useStore((s) => s.label);
   useStore((s) => s.textVersion);
+  useStore((s) => s.ocr);
+  const ocrSt = ocrState(docId, page);
+  const ocrRead = isOcrPage(docId, page);
   const panel = useStore((s) => s.panel);
   const hits = useStore(
     useShallow((s) => (s.panel === "search" ? s.search.hits.filter((h) => h.docId === docId && h.page === page) : [])),
@@ -452,7 +456,16 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
         {drag?.kind === "create" && drag.moved && !preview[0]?.free &&
           preview.map((p, i) => <div key={i} className="snap-box" style={toView(p.rect)} />)}
         {marqueeRect && <div className="marquee" style={marqueeRect} />}
-        {tool === "mask" && hasText === false && <div className="page-badge">画像のみ・範囲指定で隠せます</div>}
+        {ocrSt === "queued" || ocrSt === "running" ? (
+          <div className="page-badge ocr">
+            <i className="spinner" aria-hidden="true" />
+            {ocrSt === "running" ? "スキャン画像の文字を認識中…" : "文字認識の順番待ち"}
+          </div>
+        ) : ocrRead && !peek ? (
+          <div className="page-badge ocr done">文字認識（OCR）済み・目で確認を</div>
+        ) : (
+          tool === "mask" && hasText === false && <div className="page-badge">画像のみ・範囲指定で隠せます</div>
+        )}
         {toolbarPos && <SelectionToolbar {...toolbarPos} />}
       </div>
     </div>

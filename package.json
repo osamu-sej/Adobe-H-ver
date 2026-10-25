@@ -13,10 +13,12 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@tesseract.js-data/jpn": "1.0.0",
     "fflate": "0.8.3",
     "mupdf": "1.28.1",
     "react": "19.2.9",
     "react-dom": "19.2.9",
+    "tesseract.js": "7.0.0",
     "zustand": "5.0.16"
   },
   "devDependencies": {

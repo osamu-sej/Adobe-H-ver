@@ -90,6 +90,8 @@ interface AppState extends Snapshot {
   helpOpen: boolean;
   safetyOpen: boolean;
   loading: { name: string; done: number; total: number } | null;
+  /** スキャンしたページの文字認識の進み具合 */
+  ocr: { pending: number; done: number; failed: number; running: boolean };
   exportedAt: number | null;
   editedAt: number;
 }
@@ -132,6 +134,7 @@ export const useStore = create<AppState>(() => ({
   helpOpen: false,
   safetyOpen: false,
   loading: null,
+  ocr: { pending: 0, done: 0, failed: 0, running: false },
   exportedAt: null,
   editedAt: 0,
 }));
