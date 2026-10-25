@@ -3,9 +3,11 @@ import { createRequire } from "node:module";
 import * as mupdf from "mupdf";
 import { createWorker } from "tesseract.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { prepareOcrImage } from "../engine/ocrPrep";
 import { extractPageText } from "../engine/textExtract";
 import {
   fixConfusables,
+  OCR_PARAMS,
   ocrToPageText,
   orientationScore,
   readsWell,
@@ -389,6 +391,7 @@ beforeAll(async () => {
     gzip: true,
     cacheMethod: "none",
   });
+  await worker.setParameters(OCR_PARAMS);
 }, 60_000);
 afterAll(async () => {
   await worker?.terminate();
@@ -400,20 +403,21 @@ async function ocrPage(doc: mupdf.PDFDocument, rotate: number) {
   const b = page.getBounds();
   const k = 300 / 72;
   const m = mupdf.Matrix.concat(mupdf.Matrix.scale(k, k), mupdf.Matrix.rotate(rotate));
-  const pix = page.toPixmap(m, mupdf.ColorSpace.DeviceGray, false, true);
+  const pix = page.toPixmap(m, mupdf.ColorSpace.DeviceRGB, false, true);
   const toPage = mupdf.Matrix.concat(
     mupdf.Matrix.concat(mupdf.Matrix.translate(pix.getX(), pix.getY()), mupdf.Matrix.invert(m)),
     mupdf.Matrix.translate(-b[0], -b[1]),
   ) as Matrix6;
-  const { data } = await worker.recognize(Buffer.from(pix.asPNG()), {}, { blocks: true, text: false });
+  const w = pix.getWidth();
+  const h = pix.getHeight();
+  const gray = prepareOcrImage(pix.getPixels(), w, h, pix.getStride(), 300);
+  const out = new mupdf.Pixmap(mupdf.ColorSpace.DeviceGray, [0, 0, w, h], false);
+  const dst = out.getPixels();
+  for (let y = 0; y < h; y++) dst.set(gray.subarray(y * w, y * w + w), y * out.getStride());
+  const { data } = await worker.recognize(Buffer.from(out.asPNG()), {}, { blocks: true, text: false });
   const lines: OcrLine[] = [];
   for (const bl of data.blocks ?? []) for (const p of bl.paragraphs) for (const l of p.lines) lines.push({ words: l.words });
-  const w = pix.getWidth();
-  const stride = pix.getStride();
-  const src = pix.getPixels();
-  const gray = new Uint8Array(w * pix.getHeight());
-  for (let y = 0; y < pix.getHeight(); y++) gray.set(src.subarray(y * stride, y * stride + w), y * w);
-  return { text: ocrToPageText(lines, toPage, { data: gray, width: w, height: pix.getHeight() }), score: orientationScore(lines) };
+  return { text: ocrToPageText(lines, toPage, { data: gray, width: w, height: h }), score: orientationScore(lines) };
 }
 
 type Index = ReturnType<typeof buildIndex>;

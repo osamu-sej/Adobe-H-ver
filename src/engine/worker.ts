@@ -2,6 +2,7 @@
 import wasmUrl from "../../node_modules/mupdf/dist/mupdf-wasm.wasm?url";
 import type { OcrImageResult, OpenResult, RenderResult, TextResult, WorkerRequest, WorkerResponse } from "./protocol";
 import { runExport } from "./exporter";
+import { prepareOcrImage } from "./ocrPrep";
 import { extractPageText } from "./textExtract";
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -228,8 +229,7 @@ function ocrImage(docId: string, page: number, rotate: number, dpi: number): Ocr
   const area = Math.max(1, (b[2] - b[0]) * (b[3] - b[1]));
   const k = Math.min(dpi / 72, Math.sqrt(14_000_000 / area));
   const m = mupdf.Matrix.concat(mupdf.Matrix.scale(k, k), mupdf.Matrix.rotate(rotate));
-  const pix = getDisplayList(docId, page).toPixmap(m, mupdf.ColorSpace.DeviceGray, false);
-  const png = pix.asPNG();
+  const pix = getDisplayList(docId, page).toPixmap(m, mupdf.ColorSpace.DeviceRGB, false);
   // 画素 (u, v) → 描画空間 (u + x, v + y) → ページ空間 → 左上を原点にした元ページ空間
   const toPage = mupdf.Matrix.concat(
     mupdf.Matrix.concat(mupdf.Matrix.translate(pix.getX(), pix.getY()), mupdf.Matrix.invert(m)),
@@ -237,13 +237,17 @@ function ocrImage(docId: string, page: number, rotate: number, dpi: number): Ocr
   ) as OcrImageResult["toPage"];
   const w = pix.getWidth();
   const h = pix.getHeight();
-  const stride = pix.getStride();
-  const src = pix.getPixels();
-  const gray = new Uint8Array(w * h);
-  for (let y = 0; y < h; y++) gray.set(src.subarray(y * stride, y * stride + w), y * w);
-  const r = { png: png.slice(), gray, width: w, height: h, toPage };
+  // 色の付いたセルや罫線を消して、読みやすい白黒の濃淡にする
+  const gray = prepareOcrImage(pix.getPixels(), w, h, pix.getStride(), k * 72);
   pix.destroy();
-  return r;
+  const out = new mupdf.Pixmap(mupdf.ColorSpace.DeviceGray, [0, 0, w, h], false);
+  // 画素の配列は WASM のメモリを直接見ているので、取り出したらすぐ書く（途中でメモリが増えると見えなくなる）
+  const dst = out.getPixels();
+  const os = out.getStride();
+  for (let y = 0; y < h; y++) dst.set(gray.subarray(y * w, y * w + w), y * os);
+  const png = out.asPNG().slice();
+  out.destroy();
+  return { png, gray, width: w, height: h, toPage };
 }
 
 function extractText(docId: string, page: number): TextResult {

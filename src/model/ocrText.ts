@@ -33,6 +33,12 @@ export interface OcrLine {
   words: OcrWord[];
 }
 
+/**
+ * 文字認識（Tesseract）の設定。白黒に分けるしきい値を、ページ全体ではなく場所ごとに決める（Sauvola）。
+ * 色の付いたセルや濃い見出しが混じった表でも、文字を背景から分けやすい
+ */
+export const OCR_PARAMS = { thresholding_method: "2" };
+
 /** 画像の画素 → 元ページ空間（pt）の変換行列 [a, b, c, d, e, f] */
 export type Matrix6 = [number, number, number, number, number, number];
 

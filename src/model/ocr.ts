@@ -1,6 +1,6 @@
 import type { Worker as OcrWorker } from "tesseract.js";
 import { engine } from "../engine/client";
-import { ocrToPageText, orientationScore, readsWell, type GrayImage, type Matrix6, type OcrLine } from "./ocrText";
+import { OCR_PARAMS, ocrToPageText, orientationScore, readsWell, type GrayImage, type Matrix6, type OcrLine } from "./ocrText";
 import { toast, useStore } from "./store";
 import type { PageText } from "./types";
 
@@ -34,13 +34,15 @@ const asset = (path: string) => new URL(path, document.baseURI).href;
 
 async function createOcrWorker(): Promise<OcrWorker> {
   const { default: Tesseract } = await import("tesseract.js/dist/tesseract.esm.min.js");
-  return Tesseract.createWorker("jpn", 1, {
+  const worker = await Tesseract.createWorker("jpn", 1, {
     workerPath: asset("ocr/worker.min.js"),
     corePath: asset("ocr/"),
     langPath: asset("ocr"),
     gzip: true,
     cacheMethod: "none",
   });
+  await worker.setParameters(OCR_PARAMS);
+  return worker;
 }
 
 function takeWorker(): Promise<OcrWorker> {
