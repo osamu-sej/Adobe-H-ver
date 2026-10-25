@@ -17,6 +17,7 @@ import {
 import { STYLE_ORDER, type SnapMode, type Tool } from "./model/types";
 import { ContextMenu } from "./ui/ContextMenu";
 import { ExportDialog } from "./ui/ExportDialog";
+import { CloudOcrDialog } from "./ui/CloudOcr";
 import { DropOverlay, EmptyState, HelpOverlay, PasswordDialog, SafetyDialog, StatusBar, SuggestionBar, Toasts } from "./ui/Overlays";
 import { focusSearch, SidePanel } from "./ui/SidePanel";
 import { Sidebar } from "./ui/Sidebar";
@@ -308,6 +309,7 @@ export function App() {
       <PasswordDialog />
       <HelpOverlay />
       <SafetyDialog />
+      <CloudOcrDialog />
       <ContextMenu />
       <DropOverlay active={dragging} />
       <input

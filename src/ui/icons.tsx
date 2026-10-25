@@ -211,6 +211,12 @@ export const IconShield = (p: P) => (
   </Svg>
 );
 
+export const IconCloud = (p: P) => (
+  <Svg {...p}>
+    <path d="M7 18.5h10.5a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.6 9.1 4.75 4.75 0 0 0 7 18.5z" />
+  </Svg>
+);
+
 export const IconFile = (p: P) => (
   <Svg {...p}>
     <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />

@@ -55,8 +55,9 @@ function buildInfo(): Plugin {
   };
 }
 
-// 本番ビルドでは外部への通信を一切許可しないCSPを埋め込む。
+// 本番ビルドでは外部への通信を許可しないCSPを埋め込む。
 // 機密PDFを扱うため「ファイルが端末の外に出ない」ことをブラウザ側でも保証する。
+// 例外は、使う人が文書ごとに選んだときに使う高精度の文字認識（Google Cloud Vision）の送り先だけ。
 function offlineCsp(): Plugin {
   const csp = [
     "default-src 'self'",
@@ -65,7 +66,7 @@ function offlineCsp(): Plugin {
     "img-src 'self' blob: data:",
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self' data:",
-    "connect-src 'self' blob: data:",
+    "connect-src 'self' blob: data: https://vision.googleapis.com",
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'none'",

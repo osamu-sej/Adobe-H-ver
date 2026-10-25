@@ -1,5 +1,6 @@
 import type { Worker as OcrWorker } from "tesseract.js";
 import { engine } from "../engine/client";
+import { annotate, CloudOcrError, readingTurn, uprightReading, visionToLines } from "./cloudOcr";
 import { OCR_PARAMS, ocrToPageText, orientationScore, readsWell, type GrayImage, type Matrix6, type OcrLine } from "./ocrText";
 import { toast, useStore } from "./store";
 import type { PageText } from "./types";
@@ -8,6 +9,7 @@ import type { PageText } from "./types";
  * スキャンしたページ（文字情報がなく画像だけのページ）の文字認識。
  * 認識の部品（tesseract.js と日本語のモデル）はアプリと一緒に配信したものを使い、すべてこの端末の中で動く。
  * 表示中のページを優先し、CPUに余裕があれば2ページずつ並行して処理する。
+ * 使う人が文書ごとに確かめてオンにしたときだけ、スキャンしたページの画像を Google Cloud Vision に送って読む（高精度）。
  */
 
 export type OcrState = "queued" | "running" | "done" | "failed";
@@ -17,11 +19,17 @@ interface Job {
   page: number;
   state: OcrState;
   onDone: (text: PageText) => void;
+  /** どこで読んだか */
+  source?: "local" | "cloud";
+  /** クラウドで読めなかった（このページは端末内で読む） */
+  cloudFailed?: boolean;
 }
 
 const jobs = new Map<string, Job>();
 const key = (docId: string, page: number) => `${docId}:${page}`;
 const notified = new Set<string>();
+/** 高精度の文字認識（クラウド）をオンにした文書 */
+const cloudDocs = new Set<string>();
 const POOL_SIZE = (navigator.hardwareConcurrency ?? 2) >= 4 ? 2 : 1;
 /** 認識エンジン（1つが1ページずつ処理する） */
 const pool: Promise<OcrWorker>[] = [];
@@ -67,6 +75,33 @@ export function ocrState(docId: string, page: number): OcrState | undefined {
   return jobs.get(key(docId, page))?.state;
 }
 
+/** 読み取ったページを、どこで読んだか */
+export function ocrSource(docId: string, page: number): "local" | "cloud" | undefined {
+  const j = jobs.get(key(docId, page));
+  return j?.state === "done" ? j.source : undefined;
+}
+
+/** 文字認識するページ（文字情報がなく画像だけのページ）の数 */
+export function scannedPageCount(docId: string): number {
+  let n = 0;
+  for (const j of jobs.values()) if (j.docId === docId) n++;
+  return n;
+}
+
+/** 高精度の文字認識（クラウド）で読み直す。使う人が文書ごとに確かめてから呼ぶ */
+export function enableCloudOcr(docId: string) {
+  cloudDocs.add(docId);
+  cloudWarned = "";
+  for (const j of jobs.values()) {
+    if (j.docId !== docId) continue;
+    j.cloudFailed = false;
+    // 読んでいる途中のページは、終わってから読み直す
+    if (j.state === "done" || j.state === "failed") j.state = "queued";
+  }
+  publish();
+  pump();
+}
+
 function publish() {
   let pending = 0;
   let done = 0;
@@ -76,7 +111,7 @@ function publish() {
     else if (j.state === "failed") failed++;
     else pending++;
   }
-  useStore.setState({ ocr: { pending, done, failed, running: active > 0 } });
+  useStore.setState({ ocr: { pending, done, failed, running: active > 0, cloud: [...cloudDocs] } });
 }
 
 /** 文字のないページの文字認識を予約する。終わったら onDone に文字層を渡す */
@@ -87,7 +122,11 @@ export function requestOcr(docId: string, page: number, onDone: (text: PageText)
   if (!broken && !notified.has(docId)) {
     notified.add(docId);
     const name = useStore.getState().docs[docId]?.name ?? "PDF";
-    toast({ message: `「${name}」はスキャンした画像のページがあります。文字を認識して、数字に吸着できるようにしています（端末の中で処理）`, duration: 6000 });
+    toast({
+      message: `「${name}」はスキャンした画像のページがあります。文字を認識して、数字に吸着できるようにしています（端末の中で処理）`,
+      duration: 9000,
+      action: { label: "高精度で読む（クラウド）", run: () => useStore.setState({ cloudOcrFor: docId }) },
+    });
   }
   publish();
   pump();
@@ -96,6 +135,7 @@ export function requestOcr(docId: string, page: number, onDone: (text: PageText)
 export function dropOcr(docId: string) {
   for (const [k, j] of jobs) if (j.docId === docId) jobs.delete(k);
   notified.delete(docId);
+  cloudDocs.delete(docId);
   publish();
 }
 
@@ -111,12 +151,47 @@ function pickNext(): Job | undefined {
 }
 
 function pump() {
-  while (!broken && active < POOL_SIZE) {
+  while (active < POOL_SIZE) {
     const job = pickNext();
     if (!job) break;
+    if (broken && !(cloudDocs.has(job.docId) && !job.cloudFailed)) {
+      // 端末内の認識エンジンを読み込めないときは、クラウドで読むページだけ進める
+      job.state = "failed";
+      publish();
+      continue;
+    }
     void run(job);
   }
   if (!active) scheduleIdleStop();
+}
+
+function finish(job: Job, text: PageText, source: "local" | "cloud") {
+  if (jobs.get(key(job.docId, job.page)) !== job) return; // 認識中に閉じた
+  job.source = source;
+  // 端末内で読んでいる途中にクラウドがオンになったページは、クラウドで読み直す
+  job.state = source === "local" && cloudDocs.has(job.docId) && !job.cloudFailed ? "queued" : "done";
+  job.onDone(text);
+}
+
+let cloudWarned = "";
+function cloudFailed(job: Job, e: unknown) {
+  const err = e instanceof CloudOcrError ? e : new CloudOcrError("other", e instanceof Error ? e.message : String(e));
+  job.cloudFailed = true;
+  // キーが使えない・上限に達したときは、ほかのページも端末内で読む
+  if (err.kind === "key" || err.kind === "quota") {
+    cloudDocs.clear();
+    publish();
+  }
+  const message =
+    err.kind === "key"
+      ? `高精度の文字認識（クラウド）を使えませんでした。APIキーを確かめてください（${err.message}）。端末内で読みます`
+      : err.kind === "quota"
+        ? `高精度の文字認識（クラウド）の上限に達しました（${err.message}）。端末内で読みます`
+        : `クラウドで読めなかったページがあります（${err.message}）。そのページは端末内で読みます`;
+  if (message !== cloudWarned) {
+    cloudWarned = message;
+    toast({ message, tone: "warn", duration: 9000 });
+  }
 }
 
 async function run(job: Job) {
@@ -124,13 +199,27 @@ async function run(job: Job) {
   active++;
   job.state = "running";
   publish();
+  if (cloudDocs.has(job.docId) && !job.cloudFailed) {
+    try {
+      finish(job, await recognizeCloud(job.docId, job.page), "cloud");
+      active--;
+      publish();
+      pump();
+      return;
+    } catch (e) {
+      cloudFailed(job, e);
+    }
+  }
+  if (broken) {
+    job.state = "failed";
+    active--;
+    publish();
+    pump();
+    return;
+  }
   const worker = takeWorker();
   try {
-    const text = await recognizePage(await worker, job.docId, job.page);
-    if (jobs.get(key(job.docId, job.page)) === job) {
-      job.state = "done";
-      job.onDone(text);
-    }
+    finish(job, await recognizePage(await worker, job.docId, job.page), "local");
     idle.push(worker);
   } catch (e) {
     job.state = "failed";
@@ -182,6 +271,15 @@ async function read(worker: OcrWorker, docId: string, page: number, rotate: numb
 }
 
 const ratio = (s: Reading["score"]) => s.good / Math.max(1, s.total);
+
+/** 1ページを Google Cloud Vision で読む。横向き・逆さまの資料も、読む向きに合わせて回してから文字層にする */
+async function recognizeCloud(docId: string, page: number): Promise<PageText> {
+  const img = await engine.ocrImage(docId, page, 0, 300, 7, true);
+  if (!img.jpeg) throw new CloudOcrError("other", "ページの画像を作れませんでした");
+  const a = await annotate(img.jpeg);
+  const up = uprightReading(visionToLines(a), img.toPage, { data: img.gray, width: img.width, height: img.height }, readingTurn(a));
+  return ocrToPageText(up.lines, up.toPage, up.img);
+}
 
 /**
  * 1ページを認識する。そのままの向きで読めないとき（横向きに貼られた資料など）は、
