@@ -111,7 +111,7 @@ async function handle(req: WorkerRequest & { id: number }) {
     }
     case "ocrImage": {
       const r = ocrImage(req.docId, req.page, req.rotate, req.dpi);
-      post({ type: "result", id: req.id, ok: true, value: r }, [r.png.buffer as ArrayBuffer]);
+      post({ type: "result", id: req.id, ok: true, value: r }, [r.png.buffer as ArrayBuffer, r.gray.buffer as ArrayBuffer]);
       return;
     }
     case "close": {
@@ -235,7 +235,13 @@ function ocrImage(docId: string, page: number, rotate: number, dpi: number): Ocr
     mupdf.Matrix.concat(mupdf.Matrix.translate(pix.getX(), pix.getY()), mupdf.Matrix.invert(m)),
     mupdf.Matrix.translate(-b[0], -b[1]),
   ) as OcrImageResult["toPage"];
-  const r = { png: png.slice(), width: pix.getWidth(), height: pix.getHeight(), toPage };
+  const w = pix.getWidth();
+  const h = pix.getHeight();
+  const stride = pix.getStride();
+  const src = pix.getPixels();
+  const gray = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) gray.set(src.subarray(y * stride, y * stride + w), y * w);
+  const r = { png: png.slice(), gray, width: w, height: h, toPage };
   pix.destroy();
   return r;
 }

@@ -1,6 +1,6 @@
 import type { Worker as OcrWorker } from "tesseract.js";
 import { engine } from "../engine/client";
-import { ocrToPageText, orientationScore, readsWell, type Matrix6, type OcrLine } from "./ocrText";
+import { ocrToPageText, orientationScore, readsWell, type GrayImage, type Matrix6, type OcrLine } from "./ocrText";
 import { toast, useStore } from "./store";
 import type { PageText } from "./types";
 
@@ -158,6 +158,7 @@ async function run(job: Job) {
 interface Reading {
   lines: OcrLine[];
   toPage: Matrix6;
+  image: GrayImage;
   score: { good: number; total: number };
 }
 
@@ -175,7 +176,7 @@ async function read(worker: OcrWorker, docId: string, page: number, rotate: numb
             symbols: w.symbols.map((s) => ({ text: s.text, confidence: s.confidence, bbox: s.bbox })),
           })),
         });
-  return { lines, toPage: img.toPage, score: orientationScore(lines) };
+  return { lines, toPage: img.toPage, image: { data: img.gray, width: img.width, height: img.height }, score: orientationScore(lines) };
 }
 
 const ratio = (s: Reading["score"]) => s.good / Math.max(1, s.total);
@@ -202,5 +203,5 @@ async function recognizePage(worker: OcrWorker, docId: string, page: number): Pr
       if (turned.score.good > best.score.good) best = turned;
     }
   }
-  return ocrToPageText(best.lines, best.toPage);
+  return ocrToPageText(best.lines, best.toPage, best.image);
 }

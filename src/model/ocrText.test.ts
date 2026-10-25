@@ -4,7 +4,17 @@ import * as mupdf from "mupdf";
 import { createWorker } from "tesseract.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { extractPageText } from "../engine/textExtract";
-import { fixConfusables, ocrToPageText, orientationScore, readsWell, type Matrix6, type OcrLine } from "./ocrText";
+import {
+  fixConfusables,
+  ocrToPageText,
+  orientationScore,
+  readsWell,
+  snapToInk,
+  type GrayImage,
+  type Matrix6,
+  type OcrLine,
+  type OcrWord,
+} from "./ocrText";
 import { presetRegex } from "./presets";
 import { buildIndex, searchIndex, snapToRange, tokenAt } from "./text";
 import type { Rect } from "./types";
@@ -66,7 +76,14 @@ describe("文字認識の結果を文字層にする", () => {
   it("自信のない単語は捨てるが、数字が3つ以上ある単語は隠し漏れを防ぐため残す", () => {
     const low = 12;
     const lines: OcrLine[] = [
-      { words: [word("abc", 0, 100, 20, 30, low), word("7", 200, 100, 20, 30, low), word("13,500", 300, 100, 20, 30, low), word("xyz", 600)] },
+      {
+        words: [
+          word("abc", 0, 100, 20, 30, low),
+          word("7", 200, 100, 20, 30, low),
+          word("13,500", 300, 100, 20, 30, low),
+          word("xyz", 600),
+        ],
+      },
     ];
     const t = ocrToPageText(lines, ID);
     expect(t.chars.join("").replace(/ /g, "")).toBe("13,500xyz");
@@ -91,6 +108,192 @@ describe("文字認識の結果を文字層にする", () => {
     expect(readsWell(orientationScore(good))).toBe(true);
     const bad: OcrLine[] = [{ words: [word("1a", 0, 100, 20, 30, 40)] }];
     expect(readsWell(orientationScore(bad))).toBe(false);
+  });
+});
+
+// ---- 文字の位置をインクに合わせる ----
+
+/** 白地に、文字のインクの代わりに太さ3の四角い枠を描いた画像。rules は表の縦の罫線（文字より上下に長い） */
+function inkImage(blobs: [number, number][], opts: { rules?: number[]; invert?: boolean } = {}): GrayImage {
+  const W = 400;
+  const H = 240;
+  const bg = opts.invert ? 30 : 255;
+  const fg = opts.invert ? 230 : 0;
+  const data = new Uint8Array(W * H).fill(bg);
+  const fill = (x0: number, x1: number, y0: number, y1: number) => {
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) data[y * W + x] = fg;
+  };
+  for (const [a, b] of blobs) {
+    fill(a, b, 100, 103);
+    fill(a, b, 137, 140);
+    fill(a, Math.min(b, a + 3), 100, 140);
+    fill(Math.max(a, b - 3), b, 100, 140);
+  }
+  for (const r of opts.rules ?? []) fill(r, r + 2, 40, 200);
+  return { data, width: W, height: H };
+}
+
+/** 認識した単語（文字ごとの左右を指定。高さは 100〜140） */
+function ocrWord(symbols: [string, number, number][], confidence = 95, bbox?: [number, number]) {
+  const x0 = bbox ? bbox[0] : Math.min(...symbols.map((s) => s[1]));
+  const x1 = bbox ? bbox[1] : Math.max(...symbols.map((s) => s[2]));
+  return {
+    confidence,
+    bbox: box(x0, 100, x1, 140),
+    symbols: symbols.map(([text, a, b]) => ({ text, confidence, bbox: box(a, 100, b, 140) })),
+  };
+}
+
+const xs = (w: OcrWord) => w.symbols.map((s) => `${s.text}:${s.bbox.x0}-${s.bbox.x1}`).join(" ");
+
+describe("文字の位置をインクに合わせる", () => {
+  // 「10.7」のインク
+  const digits: [number, number][] = [
+    [100, 108],
+    [115, 135],
+    [140, 146],
+    [152, 172],
+  ];
+
+  it("認識の位置が半文字ずれていても、インクに合わせて直す", () => {
+    const w = ocrWord([
+      ["1", 110, 120],
+      ["0", 125, 145],
+      [".", 150, 156],
+      ["7", 162, 182],
+    ]);
+    const [l] = snapToInk([{ words: [w] }], inkImage(digits));
+    expect(xs(l.words[0])).toBe("1:100-108 0:115-135 .:140-146 7:152-172");
+  });
+
+  it("濃い地に白い文字でも合わせる", () => {
+    const w = ocrWord([
+      ["1", 92, 102],
+      ["0", 107, 127],
+      [".", 132, 138],
+      ["7", 144, 164],
+    ]);
+    const [l] = snapToInk([{ words: [w] }], inkImage(digits, { invert: true }));
+    expect(xs(l.words[0])).toBe("1:100-108 0:115-135 .:140-146 7:152-172");
+  });
+
+  it("単語の枠ごと1文字ずれていても、隣の単語とまとめてずらして合わせる", () => {
+    // 「26年10月2」のインク。漢字は数字より幅が広い
+    const img = inkImage([
+      [100, 124],
+      [130, 154],
+      [160, 200],
+      [208, 220],
+      [228, 252],
+      [258, 292],
+      [300, 324],
+    ]);
+    // 「年」から先の単語の枠が、まるごと右に1文字ずれている
+    const words = [
+      ocrWord([
+        ["2", 100, 124],
+        ["6", 130, 154],
+      ]),
+      ocrWord([["年", 185, 225]]),
+      ocrWord([
+        ["1", 225, 245],
+        ["0", 250, 290],
+      ]),
+      ocrWord([["月", 300, 320]]),
+      ocrWord([["2", 320, 340]]),
+    ];
+    const [l] = snapToInk([{ words }], img);
+    expect(l.words.map(xs)).toEqual(["2:100-124 6:130-154", "年:160-200", "1:208-220 0:228-252", "月:258-292", "2:300-324"]);
+  });
+
+  it("表の罫線を読み違えた「|」は、隣の数字のインクを取らない", () => {
+    // 罫線（x=90）のすぐ右に「10.7」。「|」は罫線の位置にあり、数字はずれて認識されている
+    const w = ocrWord([
+      ["|", 88, 96],
+      ["1", 104, 114],
+      ["0", 122, 142],
+      [".", 146, 152],
+      ["7", 158, 178],
+    ]);
+    const [l] = snapToInk([{ words: [w] }], inkImage(digits, { rules: [90] }));
+    expect(xs(l.words[0])).toBe("|:88-96 1:100-108 0:115-135 .:140-146 7:152-172");
+  });
+
+  it("認識されなかった「円」のインクは、数字に含めない", () => {
+    // 「100円」の「円」を読めず、単語の枠は「円」まで広がっている
+    const img = inkImage([
+      [100, 108],
+      [115, 135],
+      [140, 160],
+      [165, 205],
+    ]);
+    const w = ocrWord(
+      [
+        ["1", 100, 110],
+        ["0", 118, 138],
+        ["0", 142, 165],
+      ],
+      95,
+      [100, 205],
+    );
+    const [l] = snapToInk([{ words: [w] }], img);
+    expect(xs(l.words[0])).toBe("1:100-108 0:115-135 0:140-160");
+  });
+
+  it("幅のない数字の記号も、インクに合わせる", () => {
+    // 「19.6」の「6」が幅0、ほかは右にずれている
+    const img = inkImage([
+      [100, 108],
+      [115, 135],
+      [140, 146],
+      [152, 172],
+    ]);
+    const w = ocrWord([
+      ["1", 112, 124],
+      ["9", 130, 150],
+      [".", 156, 160],
+      ["6", 172, 172],
+    ]);
+    const [l] = snapToInk([{ words: [w] }], img);
+    expect(xs(l.words[0])).toBe("1:100-108 9:115-135 .:140-146 6:152-172");
+  });
+
+  it("自信のない、数字のない単語（絵を読み違えたもの）は、隣の数字のインクを取らない", () => {
+    const garbage = ocrWord([["の", 60, 104]], 10);
+    const w = ocrWord([
+      ["1", 110, 120],
+      ["0", 125, 145],
+      [".", 150, 156],
+      ["7", 162, 182],
+    ]);
+    const [l] = snapToInk([{ words: [garbage, w] }], inkImage(digits));
+    expect(xs(l.words[1])).toBe("1:100-108 0:115-135 .:140-146 7:152-172");
+    expect(l.words[0]).toBe(garbage);
+  });
+
+  it("自信が低くても、1文字ずつインクが合った数字は残す", () => {
+    const low: OcrLine[] = [
+      {
+        words: [
+          ocrWord(
+            [
+              ["1", 100, 108],
+              [".", 140, 146],
+              ["3", 152, 172],
+            ],
+            0,
+          ),
+        ],
+      },
+    ];
+    const img = inkImage([
+      [100, 108],
+      [140, 146],
+      [152, 172],
+    ]);
+    expect(ocrToPageText(low, ID, img).chars.join("")).toBe("1.3");
+    // 画像がなければ（インクで確かめられなければ）捨てる
+    expect(ocrToPageText(low, ID).chars.join("")).toBe("");
   });
 });
 
@@ -146,7 +349,12 @@ async function ocrPage(doc: mupdf.PDFDocument, rotate: number) {
   const { data } = await worker.recognize(Buffer.from(pix.asPNG()), {}, { blocks: true, text: false });
   const lines: OcrLine[] = [];
   for (const bl of data.blocks ?? []) for (const p of bl.paragraphs) for (const l of p.lines) lines.push({ words: l.words });
-  return { text: ocrToPageText(lines, toPage), score: orientationScore(lines) };
+  const w = pix.getWidth();
+  const stride = pix.getStride();
+  const src = pix.getPixels();
+  const gray = new Uint8Array(w * pix.getHeight());
+  for (let y = 0; y < pix.getHeight(); y++) gray.set(src.subarray(y * stride, y * stride + w), y * w);
+  return { text: ocrToPageText(lines, toPage, { data: gray, width: w, height: pix.getHeight() }), score: orientationScore(lines) };
 }
 
 type Index = ReturnType<typeof buildIndex>;
@@ -156,7 +364,9 @@ const targets = (idx: Index) =>
   ["phone", "money"].flatMap((p) => searchIndex(idx, presetRegex(p)!)).map((m) => ({ text: m.text, rect: m.rects[0] }));
 
 function overlap(a: Rect, b: Rect) {
-  return Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+  return (
+    Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y))
+  );
 }
 
 /**
