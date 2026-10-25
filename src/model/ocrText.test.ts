@@ -133,14 +133,15 @@ function inkImage(blobs: [number, number][], opts: { rules?: number[]; invert?: 
   return { data, width: W, height: H };
 }
 
-/** 認識した単語（文字ごとの左右を指定。高さは 100〜140） */
-function ocrWord(symbols: [string, number, number][], confidence = 95, bbox?: [number, number]) {
+/** 認識した単語（文字ごとの左右を指定。高さは 100〜140、tall なら上下に余白を含んだ 80〜160） */
+function ocrWord(symbols: [string, number, number][], confidence = 95, bbox?: [number, number], tall = false) {
   const x0 = bbox ? bbox[0] : Math.min(...symbols.map((s) => s[1]));
   const x1 = bbox ? bbox[1] : Math.max(...symbols.map((s) => s[2]));
+  const [y0, y1] = tall ? [80, 160] : [100, 140];
   return {
     confidence,
-    bbox: box(x0, 100, x1, 140),
-    symbols: symbols.map(([text, a, b]) => ({ text, confidence, bbox: box(a, 100, b, 140) })),
+    bbox: box(x0, y0, x1, y1),
+    symbols: symbols.map(([text, a, b]) => ({ text, confidence, bbox: box(a, y0, b, y1) })),
   };
 }
 
@@ -269,6 +270,64 @@ describe("文字の位置をインクに合わせる", () => {
     const [l] = snapToInk([{ words: [garbage, w] }], inkImage(digits));
     expect(xs(l.words[1])).toBe("1:100-108 0:115-135 .:140-146 7:152-172");
     expect(l.words[0]).toBe(garbage);
+  });
+
+  it("数字の認識の枠が広すぎても（「2005年」の「5」の枠が行の終わりまで）、その数字のインクに合わせる", () => {
+    // 「2005年1月1日」のインク
+    const img = inkImage([
+      [100, 116],
+      [120, 136],
+      [140, 156],
+      [160, 176],
+      [182, 222],
+      [230, 236],
+      [246, 280],
+      [290, 296],
+      [304, 336],
+    ]);
+    const words = [
+      ocrWord(
+        [
+          ["2", 100, 116],
+          ["0", 120, 136],
+          ["0", 140, 156],
+          ["5", 160, 336],
+        ],
+        95,
+        [100, 336],
+      ),
+      ocrWord([["年", 190, 222]], 95, undefined, true),
+      ocrWord([["1", 222, 244]], 95, undefined, true),
+      ocrWord([["月", 244, 284]], 95, undefined, true),
+      ocrWord([["1", 284, 302]], 95, undefined, true),
+      ocrWord([["日", 302, 336]], 95, undefined, true),
+    ];
+    const [l] = snapToInk([{ words }], img);
+    expect(l.words.map(xs)).toEqual([
+      "2:100-116 0:120-136 0:140-156 5:160-176",
+      "年:182-222",
+      "1:230-236",
+      "月:246-280",
+      "1:290-296",
+      "日:304-336",
+    ]);
+  });
+
+  it("読み落とした数字のインクは、隣の漢字ではなく数字に含める", () => {
+    // 「年10月」を「年1月」と読み、「年」の枠が「1」まで広がっている。1文字だけの単語の枠は上下にも高い
+    const img = inkImage([
+      [100, 140],
+      [146, 150],
+      [156, 172],
+      [178, 210],
+    ]);
+    const words = [
+      ocrWord([["年", 100, 150]], 95, undefined, true),
+      ocrWord([["1", 150, 172]], 95, undefined, true),
+      ocrWord([["月", 172, 210]], 95, undefined, true),
+    ];
+    const [l] = snapToInk([{ words }], img);
+    expect(l.words.map(xs)).toEqual(["年:100-140", "1:146-172", "月:178-210"]);
   });
 
   it("自信が低くても、1文字ずつインクが合った数字は残す", () => {
