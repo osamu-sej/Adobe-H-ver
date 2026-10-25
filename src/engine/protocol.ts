@@ -27,6 +27,8 @@ export interface TextResult {
 /** 文字認識用のページ画像（グレースケールPNG） */
 export interface OcrImageResult {
   png: Uint8Array;
+  /** 同じ画像の画素（1画素1バイト）。文字の位置をインクに合わせるのに使う */
+  gray: Uint8Array;
   width: number;
   height: number;
   /** 画像の画素 → 元ページ空間（pt）の変換行列 [a, b, c, d, e, f] */
