@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { DocEntry, DocLayout, Level, Mask, MaskStyle, Rect, Rot, SnapMode, Tool } from "./types";
 import { addRot } from "./geometry";
+import { cloudKey } from "./cloudOcr";
 
 export interface Snapshot {
   docOrder: string[];
@@ -89,10 +90,12 @@ interface AppState extends Snapshot {
   exportOpen: boolean;
   helpOpen: boolean;
   safetyOpen: boolean;
+  settingsOpen: boolean;
   loading: { name: string; done: number; total: number } | null;
-  /** スキャンしたページの文字認識の進み具合 */
   /** 文字認識の進み具合。cloud は高精度の文字認識（クラウド）をオンにした文書 */
   ocr: { pending: number; done: number; failed: number; running: boolean; cloud: string[] };
+  /** 設定で高精度の文字認識（クラウド）のAPIキーを入れたか（入れていなければ、クラウドの項目は画面に出さない） */
+  cloudKeySet: boolean;
   /** 高精度の文字認識（クラウド）の確認画面を開いている文書 */
   cloudOcrFor: string | null;
   exportedAt: number | null;
@@ -136,8 +139,10 @@ export const useStore = create<AppState>(() => ({
   exportOpen: false,
   helpOpen: false,
   safetyOpen: false,
+  settingsOpen: false,
   loading: null,
   ocr: { pending: 0, done: 0, failed: 0, running: false, cloud: [] },
+  cloudKeySet: !!cloudKey(),
   cloudOcrFor: null,
   exportedAt: null,
   editedAt: 0,

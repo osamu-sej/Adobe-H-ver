@@ -91,6 +91,21 @@ describe("文字認識の結果を文字層にする", () => {
     expect(t.chars.join("").replace(/ /g, "")).toBe("13,500xyz");
   });
 
+  it("数字が分かれて読まれたときの1文字だけの単語（「1」と「234,567」）は、単語の自信が低くても残す", () => {
+    const one = { confidence: 0, bbox: box(0, 100, 18, 130), symbols: [{ text: "1", confidence: 85, bbox: box(4, 100, 12, 130) }] };
+    const lines: OcrLine[] = [{ words: [one, word("234,567", 30)] }];
+    expect(ocrToPageText(lines, ID).chars.join("")).toBe("1234,567");
+    // 離れた所にある自信のない1文字は、読み違いとして捨てる
+    const far = { ...one, bbox: box(-200, 100, -182, 130), symbols: [{ ...one.symbols[0], bbox: box(-196, 100, -188, 130) }] };
+    expect(ocrToPageText([{ words: [far, word("234,567", 30)] }], ID).chars.join("")).toBe("234,567");
+  });
+
+  it("日本語の文字と数字の間の狭い隙間には空白を入れない（日付などが検索で見つかる）", () => {
+    // 隙間は文字の高さ（30）の 1/3。広い隙間（2/3）には空白を入れる
+    const lines: OcrLine[] = [{ words: [word("2024年4月", 0), word("1日", 150), word("〒", 210), word("102-8455", 240)] }];
+    expect(buildIndex(ocrToPageText(lines, ID)).full).toBe("2024年4月1日 〒102-8455");
+  });
+
   it("読み落とした数字も隠れるよう、数字は前後の文字との隙間まで広がる", () => {
     // 「(10%)」の「1」を読み落として「(0%)」になった場合
     const symbols = [
@@ -452,7 +467,7 @@ function expectCovered(ocr: Index, original: Index) {
 
 describe("スキャンしたページの文字認識", () => {
   it("文字のない画像だけのページになっている", () => {
-    const t = extractPageText(scannedSample(0).loadPage(0));
+    const t = extractPageText(scannedSample(0).loadPage(0), mupdf);
     expect(t.chars.filter((c) => c.trim()).length).toBe(0);
     expect(t.images).toBe(1);
   });
@@ -460,7 +475,7 @@ describe("スキャンしたページの文字認識", () => {
   it("電話番号・金額を、元の文字と同じ位置で隠せる", async () => {
     const { text, score } = await ocrPage(scannedSample(0), 0);
     expect(readsWell(score)).toBe(true);
-    expectCovered(buildIndex(text), buildIndex(extractPageText(samplePage(0))));
+    expectCovered(buildIndex(text), buildIndex(extractPageText(samplePage(0), mupdf)));
   }, 60_000);
 
   it("横向きに置かれたページも、向きを変えて読めば同じ位置で隠せる", async () => {
@@ -472,6 +487,6 @@ describe("スキャンしたページの文字認識", () => {
     const b = await ocrPage(doc, 270);
     const best = a.score.good >= b.score.good ? a : b;
     expect(readsWell(best.score)).toBe(true);
-    expectCovered(buildIndex(best.text), buildIndex(extractPageText(samplePage(90))));
+    expectCovered(buildIndex(best.text), buildIndex(extractPageText(samplePage(90), mupdf)));
   }, 120_000);
 });

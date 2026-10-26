@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { prepareOcrImage } from "./ocrPrep";
+import { blankRects, prepareOcrImage } from "./ocrPrep";
 
 /** 白地の RGB 画像。fill で四角を塗る */
 function canvas(w: number, h: number) {
@@ -74,5 +74,21 @@ describe("文字認識の前に画像を整える", () => {
 
   it("紙の地の薄い灰色は白にする", () => {
     expect(at(340, 40)).toBe(255);
+  });
+});
+
+describe("PDFの文字がある所を白く消す", () => {
+  it("ページの座標の矩形を画素に直して、少し広めに白く塗る", () => {
+    const { data, fill } = canvas(100, 100);
+    fill(0, 0, 100, 100, [10, 10, 10]);
+    // 画素 = ページ（pt）× 2
+    blankRects(data, 100, 100, 300, [10, 10, 20, 15], [2, 0, 0, 2, 0, 0]);
+    const px = (x: number, y: number) => data[(y * 100 + x) * 3];
+    expect(px(25, 25)).toBe(255);
+    expect(px(19, 19)).toBe(255);
+    expect(px(40, 30)).toBe(255);
+    expect(px(17, 25)).toBe(10);
+    expect(px(25, 32)).toBe(10);
+    expect(px(50, 50)).toBe(10);
   });
 });

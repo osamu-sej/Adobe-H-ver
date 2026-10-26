@@ -535,6 +535,28 @@ function toPageBox(m: Matrix6, x0: number, y0: number, x1: number, y1: number): 
 }
 
 /**
+ * 数字だけの単語が、すぐ隣の数字の単語の続き（「1,234,567」が「1」と「234,567」に分かれたなど）か。
+ * 1文字だけの単語は単語としての自信が低く出やすいが、文字としては読めていれば、数字の一部として残す
+ */
+function partOfNumber(w: OcrWord, words: OcrWord[]): boolean {
+  const text = w.symbols.map((s) => s.text.normalize("NFKC")).join("");
+  if (!/^[\d,.\-]+$/.test(text) || !/\d/.test(text) || Math.max(...w.symbols.map((s) => s.confidence)) < 60) return false;
+  const h = w.bbox.y1 - w.bbox.y0;
+  return words.some((o) => {
+    if (o === w) return false;
+    const t = o.symbols.map((s) => s.text.normalize("NFKC")).join("");
+    const sameRow = Math.min(o.bbox.y1, w.bbox.y1) - Math.max(o.bbox.y0, w.bbox.y0) > h * 0.5;
+    if (!sameRow) return false;
+    if (o.bbox.x0 >= w.bbox.x1) return o.bbox.x0 - w.bbox.x1 <= h * 0.6 && /^[\d,.]/.test(t) && /\d/.test(t);
+    if (o.bbox.x1 <= w.bbox.x0) return w.bbox.x0 - o.bbox.x1 <= h * 0.6 && /[\d,.]$/.test(t) && /\d/.test(t);
+    return false;
+  });
+}
+
+/** 日本語の文字（漢字・かな・記号）。日本語の文の中の単語の切れ目には、ふつう空白を入れない */
+const CJK = /[　-ヿ㐀-鿿＀-￯]/;
+
+/**
  * OCRの結果を PageText にする。
  * - 隙間の広いところで別のかたまりに分け、かたまりごとに別の行番号を付ける（表のセル同士がつながらない）
  * - 文字の縦の範囲は単語の高さにそろえる（隠したときに上下が欠けない）
@@ -565,7 +587,7 @@ export function ocrToPageText(lines: OcrLine[], toPage: Matrix6, img?: GrayImage
     const words: Glyph[][] = [];
     for (const w of l.words) {
       const digits = w.symbols.filter((s) => /\d/.test(s.text.normalize("NFKC"))).length;
-      if (w.confidence < MIN_WORD_CONFIDENCE && digits < KEEP_DIGITS && !w.inkMatched) continue;
+      if (w.confidence < MIN_WORD_CONFIDENCE && digits < KEEP_DIGITS && !w.inkMatched && !partOfNumber(w, l.words)) continue;
       // 文字の大きさは単語の高さ。単語の枠が2行にまたがって高すぎるときは、文字のインクの高さから見積もる
       const wordH = Math.max(1, w.bbox.y1 - w.bbox.y0);
       const inkH = w.snapped
@@ -598,8 +620,10 @@ export function ocrToPageText(lines: OcrLine[], toPage: Matrix6, img?: GrayImage
       const gap = prev ? g.x0 - prev.g.x1 : Infinity;
       // 数字の中（「1,234」のカンマの後など）は、単語が分かれていても広めの隙間でなければ空白を入れない
       const inNumber = prev && ((numeric(prev.text) && digit(text)) || (digit(prev.text) && numeric(text)));
+      // 日本語の文字の隣（「4月 1日」「〒 102」など）も、狭い隙間には空白を入れない（検索で見つかるように）
+      const japanese = prev && (CJK.test(prev.text) || CJK.test(text));
       if (!prev || gap > hh * (first ? CHUNK_GAP : CHUNK_GAP_IN_WORD)) line++;
-      else if (first && gap > hh * (inNumber ? NUMBER_SPACE_GAP : SPACE_GAP))
+      else if (first && gap > hh * (inNumber || japanese ? NUMBER_SPACE_GAP : SPACE_GAP))
         push(" ", prev.g.x1, Math.min(prev.g.y0, g.y0), g.x0, Math.max(prev.g.y1, g.y1), hh);
       // 数字は前後の文字との隙間まで広げる。読み落とした数字（「10%」の「1」など）も隠れるように。
       // 単語の切れ目をまたぐのは、隣も数字・区切り記号のときだけ

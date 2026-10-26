@@ -20,7 +20,7 @@ function findMasks(
   fill = { color: "#000000", opacity: 1 },
 ): ExportMask[] {
   const doc = new mupdf.PDFDocument(SAMPLE);
-  const idx = buildIndex(extractPageText(doc.loadPage(page)));
+  const idx = buildIndex(extractPageText(doc.loadPage(page), mupdf));
   doc.destroy();
   return searchIndex(idx, presetRegex(preset)!).flatMap((m, i) =>
     m.rects.map((r) => ({
