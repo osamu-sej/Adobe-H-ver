@@ -2,7 +2,7 @@
 import wasmUrl from "../../node_modules/mupdf/dist/mupdf-wasm.wasm?url";
 import type { OcrImageResult, OpenResult, RenderResult, TextResult, WorkerRequest, WorkerResponse } from "./protocol";
 import { runExport } from "./exporter";
-import { prepareOcrImage } from "./ocrPrep";
+import { blankRects, prepareOcrImage } from "./ocrPrep";
 import { extractPageText } from "./textExtract";
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -107,11 +107,13 @@ async function handle(req: WorkerRequest & { id: number }) {
     }
     case "text": {
       const t = extractText(req.docId, req.page);
-      post({ type: "result", id: req.id, ok: true, value: t }, [t.boxes.buffer, t.lines.buffer, t.sizes.buffer]);
+      const transfer = [t.boxes.buffer, t.lines.buffer, t.sizes.buffer] as ArrayBuffer[];
+      if (t.flags) transfer.push(t.flags.buffer as ArrayBuffer);
+      post({ type: "result", id: req.id, ok: true, value: t }, transfer);
       return;
     }
     case "ocrImage": {
-      const r = ocrImage(req.docId, req.page, req.rotate, req.dpi, !!req.jpeg);
+      const r = ocrImage(req.docId, req.page, req.rotate, req.dpi, !!req.jpeg, req.blank);
       const transfer = [r.png.buffer as ArrayBuffer, r.gray.buffer as ArrayBuffer];
       if (r.jpeg) transfer.push(r.jpeg.buffer as ArrayBuffer);
       post({ type: "result", id: req.id, ok: true, value: r }, transfer);
@@ -221,8 +223,11 @@ async function render(docId: string, page: number, scale: number): Promise<Rende
   return { bitmap, width: w, height: h, scale };
 }
 
-/** 文字認識用に、ページを高解像度のグレースケール画像にする（向きを変えて読むときは回転して描く） */
-function ocrImage(docId: string, page: number, rotate: number, dpi: number, withJpeg: boolean): OcrImageResult {
+/**
+ * 文字認識用に、ページを高解像度のグレースケール画像にする（向きを変えて読むときは回転して描く）。
+ * blank にはPDFの文字がある範囲を入れる：白く消して、画像や図の中の文字だけを読む（クラウドにもPDFの文字は送らない）
+ */
+function ocrImage(docId: string, page: number, rotate: number, dpi: number, withJpeg: boolean, blank?: number[]): OcrImageResult {
   const d = docs.get(docId);
   if (!d) throw new Error("document is not open");
   const p = d.doc.loadPage(page);
@@ -239,8 +244,11 @@ function ocrImage(docId: string, page: number, rotate: number, dpi: number, with
   ) as OcrImageResult["toPage"];
   const w = pix.getWidth();
   const h = pix.getHeight();
+  // 画素の配列は WASM のメモリを直接見ているので、取り出したらすぐ使う
+  const rgb = pix.getPixels();
+  if (blank?.length) blankRects(rgb, w, h, pix.getStride(), blank, mupdf.Matrix.invert(toPage) as OcrImageResult["toPage"]);
   // 色の付いたセルや罫線を消して、読みやすい白黒の濃淡にする
-  const gray = prepareOcrImage(pix.getPixels(), w, h, pix.getStride(), k * 72);
+  const gray = prepareOcrImage(rgb, w, h, pix.getStride(), k * 72);
   const jpeg = withJpeg ? pix.asJPEG(85).slice() : undefined;
   pix.destroy();
   const out = new mupdf.Pixmap(mupdf.ColorSpace.DeviceGray, [0, 0, w, h], false);
@@ -258,7 +266,7 @@ function extractText(docId: string, page: number): TextResult {
   if (!d) throw new Error("document is not open");
   const p = d.doc.loadPage(page);
   try {
-    return extractPageText(p);
+    return extractPageText(p, mupdf);
   } finally {
     p.destroy();
   }

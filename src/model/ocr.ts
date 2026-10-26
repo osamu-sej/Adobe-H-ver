@@ -2,14 +2,16 @@ import type { Worker as OcrWorker } from "tesseract.js";
 import { engine } from "../engine/client";
 import { annotate, CloudOcrError, readingTurn, uprightReading, visionToLines } from "./cloudOcr";
 import { OCR_PARAMS, ocrToPageText, orientationScore, readsWell, type GrayImage, type Matrix6, type OcrLine } from "./ocrText";
+import type { OcrMode } from "./pageText";
 import { toast, useStore } from "./store";
 import type { PageText } from "./types";
 
 /**
- * スキャンしたページ（文字情報がなく画像だけのページ）の文字認識。
+ * 文字認識。スキャンしたページ（文字情報がなく画像だけのページ）はページ全体を、
+ * 文字情報のあるページは貼り付けた画像・文字を図形にしたもの・文字化けした文字の部分を読む。
  * 認識の部品（tesseract.js と日本語のモデル）はアプリと一緒に配信したものを使い、すべてこの端末の中で動く。
  * 表示中のページを優先し、CPUに余裕があれば2ページずつ並行して処理する。
- * 使う人が文書ごとに確かめてオンにしたときだけ、スキャンしたページの画像を Google Cloud Vision に送って読む（高精度）。
+ * 設定でAPIキーを入れた人が文書ごとに確かめてオンにしたときだけ、ページの画像を Google Cloud Vision に送って読む（高精度）。
  */
 
 export type OcrState = "queued" | "running" | "done" | "failed";
@@ -18,6 +20,9 @@ interface Job {
   docId: string;
   page: number;
   state: OcrState;
+  mode: OcrMode;
+  /** 白く消してから読む範囲（PDFの文字がある所） */
+  blank?: number[];
   onDone: (text: PageText) => void;
   /** どこで読んだか */
   source?: "local" | "cloud";
@@ -75,14 +80,19 @@ export function ocrState(docId: string, page: number): OcrState | undefined {
   return jobs.get(key(docId, page))?.state;
 }
 
+/** ページの文字認識の使い方（ページ全体／画像・図の中だけ） */
+export function ocrJobMode(docId: string, page: number): OcrMode | undefined {
+  return jobs.get(key(docId, page))?.mode;
+}
+
 /** 読み取ったページを、どこで読んだか */
 export function ocrSource(docId: string, page: number): "local" | "cloud" | undefined {
   const j = jobs.get(key(docId, page));
   return j?.state === "done" ? j.source : undefined;
 }
 
-/** 文字認識するページ（文字情報がなく画像だけのページ）の数 */
-export function scannedPageCount(docId: string): number {
+/** 文字認識するページ（スキャンしたページと、画像や図の中の文字を読むページ）の数 */
+export function ocrTargetCount(docId: string): number {
   let n = 0;
   for (const j of jobs.values()) if (j.docId === docId) n++;
   return n;
@@ -102,6 +112,12 @@ export function enableCloudOcr(docId: string) {
   pump();
 }
 
+/** 高精度の文字認識（クラウド）をすべての文書でやめる（APIキーを消したとき）。読み終えたページはそのまま */
+export function disableCloudOcr() {
+  cloudDocs.clear();
+  publish();
+}
+
 function publish() {
   let pending = 0;
   let done = 0;
@@ -114,18 +130,24 @@ function publish() {
   useStore.setState({ ocr: { pending, done, failed, running: active > 0, cloud: [...cloudDocs] } });
 }
 
-/** 文字のないページの文字認識を予約する。終わったら onDone に文字層を渡す */
-export function requestOcr(docId: string, page: number, onDone: (text: PageText) => void) {
+/**
+ * ページの文字認識を予約する。終わったら onDone に読んだ文字を渡す。
+ * mode が extra のときは blank の範囲（PDFの文字がある所）を白く消してから読む
+ */
+export function requestOcr(docId: string, page: number, mode: OcrMode, blank: number[] | undefined, onDone: (text: PageText) => void) {
   const k = key(docId, page);
   if (jobs.has(k)) return;
-  jobs.set(k, { docId, page, state: broken ? "failed" : "queued", onDone });
-  if (!broken && !notified.has(docId)) {
+  jobs.set(k, { docId, page, state: broken ? "failed" : "queued", mode, blank, onDone });
+  // スキャンした文書を開いたときだけ知らせる（画像の中の文字を読むのは裏で静かに進める）
+  if (!broken && mode === "page" && !notified.has(docId)) {
     notified.add(docId);
-    const name = useStore.getState().docs[docId]?.name ?? "PDF";
+    const s = useStore.getState();
+    const name = s.docs[docId]?.name ?? "PDF";
     toast({
       message: `「${name}」はスキャンした画像のページがあります。文字を認識して、数字に吸着できるようにしています（端末の中で処理）`,
       duration: 9000,
-      action: { label: "高精度で読む（クラウド）", run: () => useStore.setState({ cloudOcrFor: docId }) },
+      // クラウドはAPIキーを設定した人にだけ出す
+      action: s.cloudKeySet ? { label: "高精度で読む（クラウド）", run: () => useStore.setState({ cloudOcrFor: docId }) } : undefined,
     });
   }
   publish();
@@ -201,7 +223,7 @@ async function run(job: Job) {
   publish();
   if (cloudDocs.has(job.docId) && !job.cloudFailed) {
     try {
-      finish(job, await recognizeCloud(job.docId, job.page), "cloud");
+      finish(job, await recognizeCloud(job), "cloud");
       active--;
       publish();
       pump();
@@ -219,7 +241,7 @@ async function run(job: Job) {
   }
   const worker = takeWorker();
   try {
-    finish(job, await recognizePage(await worker, job.docId, job.page), "local");
+    finish(job, await recognizePage(await worker, job), "local");
     idle.push(worker);
   } catch (e) {
     job.state = "failed";
@@ -234,7 +256,7 @@ async function run(job: Job) {
       broken = true;
       for (const j of jobs.values()) if (j.state === "queued") j.state = "failed";
       toast({
-        message: "文字認識を始められませんでした（" + (e instanceof Error ? e.message : String(e)) + "）。スキャンしたページは範囲をなぞって隠せます",
+        message: "文字認識を始められませんでした（" + (e instanceof Error ? e.message : String(e)) + "）。スキャンしたページや画像の部分は、範囲をなぞって隠せます",
         tone: "warn",
         duration: 9000,
       });
@@ -253,8 +275,8 @@ interface Reading {
   score: { good: number; total: number };
 }
 
-async function read(worker: OcrWorker, docId: string, page: number, rotate: number, dpi: number): Promise<Reading> {
-  const img = await engine.ocrImage(docId, page, rotate, dpi, 7);
+async function read(worker: OcrWorker, docId: string, page: number, rotate: number, dpi: number, blank?: number[]): Promise<Reading> {
+  const img = await engine.ocrImage(docId, page, rotate, dpi, 7, false, blank);
   const { data } = await worker.recognize(new Blob([img.png as BlobPart], { type: "image/png" }), {}, { blocks: true, text: false });
   const lines: OcrLine[] = [];
   for (const b of data.blocks ?? [])
@@ -272,9 +294,12 @@ async function read(worker: OcrWorker, docId: string, page: number, rotate: numb
 
 const ratio = (s: Reading["score"]) => s.good / Math.max(1, s.total);
 
-/** 1ページを Google Cloud Vision で読む。横向き・逆さまの資料も、読む向きに合わせて回してから文字層にする */
-async function recognizeCloud(docId: string, page: number): Promise<PageText> {
-  const img = await engine.ocrImage(docId, page, 0, 300, 7, true);
+/**
+ * 1ページを Google Cloud Vision で読む。横向き・逆さまの資料も、読む向きに合わせて回してから文字層にする。
+ * 文字情報のあるページは、PDFの文字を白く消した画像を送る
+ */
+async function recognizeCloud(job: Job): Promise<PageText> {
+  const img = await engine.ocrImage(job.docId, job.page, 0, 300, 7, true, job.blank);
   if (!img.jpeg) throw new CloudOcrError("other", "ページの画像を作れませんでした");
   const a = await annotate(img.jpeg);
   const up = uprightReading(visionToLines(a), img.toPage, { data: img.gray, width: img.width, height: img.height }, readingTurn(a));
@@ -283,11 +308,13 @@ async function recognizeCloud(docId: string, page: number): Promise<PageText> {
 
 /**
  * 1ページを認識する。そのままの向きで読めないとき（横向きに貼られた資料など）は、
- * 小さな画像で横向き（90度・270度）、だめなら逆さま（180度）を試し、よく読める向きで読み直す
+ * 小さな画像で横向き（90度・270度）、だめなら逆さま（180度）を試し、よく読める向きで読み直す。
+ * 画像や図の中だけを読むページは、文字が少ないのが普通なので向きは試さない
  */
-async function recognizePage(worker: OcrWorker, docId: string, page: number): Promise<PageText> {
-  let best = await read(worker, docId, page, 0, 300);
-  if (!readsWell(best.score)) {
+async function recognizePage(worker: OcrWorker, job: Job): Promise<PageText> {
+  const { docId, page } = job;
+  let best = await read(worker, docId, page, 0, 300, job.blank);
+  if (job.mode === "page" && !readsWell(best.score)) {
     const probe = async (r: number) => ({ r, s: (await read(worker, docId, page, r, 110)).score });
     let top = { r: 0, s: best.score };
     for (const r of [90, 270]) {

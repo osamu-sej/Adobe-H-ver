@@ -2122,3 +2122,24 @@ button.sb-privacy.cloud:hover {
   font-size: 11.5px;
   color: var(--muted);
 }
+
+/* ===== 設定 ===== */
+.modal.settings {
+  width: min(560px, 100%);
+}
+.modal.settings .modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.settings-ok {
+  color: var(--ok);
+  font-weight: 600;
+}

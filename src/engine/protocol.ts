@@ -15,6 +15,14 @@ export interface RenderResult {
   scale: number;
 }
 
+/** 文字ごとの状態（TextResult.flags のビット） */
+export const CharFlag = {
+  /** 見えない文字（透明の文字、上から画像で覆われた文字）。スキャンに重ねた文字層など */
+  Hidden: 1,
+  /** 文字化け（PDFに文字の対応表がなく、何の文字か分からない） */
+  Garbled: 2,
+} as const;
+
 export interface TextResult {
   chars: string[];
   boxes: Float32Array;
@@ -22,6 +30,14 @@ export interface TextResult {
   sizes: Float32Array;
   /** ページ上の画像の数（文字がなく画像だけのページは文字認識の対象にする） */
   images?: number;
+  /** 文字ごとの状態（CharFlag のビット：見えない文字・文字化け） */
+  flags?: Uint8Array;
+  /** 文字認識で読む画像（貼り付けた表・スクリーンショットなど）の数 */
+  figures?: number;
+  /** ページのほとんどを覆う画像がある（スキャンの上に文字層を重ねたPDFなど） */
+  cover?: boolean;
+  /** 文字の形をした図形（文字を図形にしたもの）の数 */
+  glyphPaths?: number;
 }
 
 /** 文字認識用のページ画像（グレースケールPNG） */
@@ -147,7 +163,18 @@ export type WorkerRequest =
   | { type: "open"; id: number; docId: string; bytes: Uint8Array; password?: string }
   | { type: "render"; id: number; docId: string; page: number; scale: number; priority: number }
   | { type: "text"; id: number; docId: string; page: number; priority: number }
-  | { type: "ocrImage"; id: number; docId: string; page: number; rotate: number; dpi: number; priority: number; jpeg?: boolean }
+  | {
+      type: "ocrImage";
+      id: number;
+      docId: string;
+      page: number;
+      rotate: number;
+      dpi: number;
+      priority: number;
+      jpeg?: boolean;
+      /** 白く消してから読む範囲（PDFの文字がある所。元ページ空間の [x0, y0, x1, y1] × n） */
+      blank?: number[];
+    }
   | { type: "close"; id: number; docId: string }
   | { type: "export"; id: number; job: ExportJob }
   | { type: "cancel"; ids: number[] };

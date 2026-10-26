@@ -22,6 +22,7 @@ import {
   IconHand,
   IconHash,
   IconHelp,
+  IconSettings,
   IconList,
   IconMask,
   IconMaximize,
@@ -325,6 +326,9 @@ export function TopBar({ onOpen }: { onOpen: () => void }) {
         </button>
         <button className="icon-btn" title="使い方とショートカット（?）" onClick={() => useStore.setState({ helpOpen: true })}>
           <IconHelp />
+        </button>
+        <button className="icon-btn" title="設定" onClick={() => useStore.setState({ settingsOpen: true })}>
+          <IconSettings />
         </button>
         <button className="btn primary export-btn" title="PDFを書き出す（Ctrl+S）" onClick={() => useStore.setState({ exportOpen: true })}>
           <IconDownload size={17} />

@@ -18,6 +18,7 @@ import { STYLE_ORDER, type SnapMode, type Tool } from "./model/types";
 import { ContextMenu } from "./ui/ContextMenu";
 import { ExportDialog } from "./ui/ExportDialog";
 import { CloudOcrDialog } from "./ui/CloudOcr";
+import { SettingsDialog } from "./ui/Settings";
 import { DropOverlay, EmptyState, HelpOverlay, PasswordDialog, SafetyDialog, StatusBar, SuggestionBar, Toasts } from "./ui/Overlays";
 import { focusSearch, SidePanel } from "./ui/SidePanel";
 import { Sidebar } from "./ui/Sidebar";
@@ -55,7 +56,7 @@ function handleKeyDown(e: KeyboardEvent, openPicker: () => void) {
     setTimeout(() => focusSearch.current(), 0);
     return;
   }
-  if (isTyping(e) || s.exportOpen || s.passwordRequest || s.safetyOpen) return;
+  if (isTyping(e) || s.exportOpen || s.passwordRequest || s.safetyOpen || s.settingsOpen || s.cloudOcrFor) return;
   if (s.helpOpen) {
     if (e.key === "Escape" || e.key === "?") useStore.setState({ helpOpen: false });
     return;
@@ -310,6 +311,7 @@ export function App() {
       <HelpOverlay />
       <SafetyDialog />
       <CloudOcrDialog />
+      <SettingsDialog />
       <ContextMenu />
       <DropOverlay active={dragging} />
       <input

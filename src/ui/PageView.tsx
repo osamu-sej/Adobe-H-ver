@@ -18,7 +18,7 @@ import {
 import { clampRect, normRect, toBasePoint, toBaseRect, toViewRect, viewSize } from "../model/geometry";
 import { maskFrom, suggestSameValues, suggestForSelection } from "../model/actions";
 import { rangeRects, rangeText, snapToRange, textUnder, tokenAt, type SnapResult } from "../model/text";
-import { ocrSource, ocrState } from "../model/ocr";
+import { ocrJobMode, ocrSource, ocrState } from "../model/ocr";
 import { ensureText, getText, isOcrPage } from "../model/texts";
 import { STYLE_LABEL, STYLE_ORDER, type Mask, type PageInfo, type Rect, type Rot } from "../model/types";
 import { pageCache, usePageBitmap } from "../render/bitmaps";
@@ -75,6 +75,8 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
   const ocrSt = ocrState(docId, page);
   const ocrFrom = ocrSource(docId, page);
   const ocrRead = isOcrPage(docId, page);
+  // 画像や図の中だけを読むページ（PDFの文字はそのまま使える）
+  const ocrPartial = ocrJobMode(docId, page) === "extra";
   const panel = useStore((s) => s.panel);
   const hits = useStore(
     useShallow((s) => (s.panel === "search" ? s.search.hits.filter((h) => h.docId === docId && h.page === page) : [])),
@@ -460,11 +462,12 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
         {ocrSt === "queued" || ocrSt === "running" ? (
           <div className="page-badge ocr">
             <i className="spinner" aria-hidden="true" />
-            {ocrSt === "running" ? "スキャン画像の文字を認識中…" : "文字認識の順番待ち"}
+            {ocrSt === "running" ? (ocrPartial ? "画像・図の中の文字を認識中…" : "スキャン画像の文字を認識中…") : "文字認識の順番待ち"}
           </div>
         ) : ocrRead && !peek ? (
           <div className="page-badge ocr done">
-            {ocrFrom === "cloud" ? "クラウドで文字認識済み・目で確認を" : "文字認識（OCR）済み・目で確認を"}
+            {(ocrPartial ? "画像・図の中の文字を" : "") +
+              (ocrFrom === "cloud" ? "クラウドで文字認識済み・目で確認を" : "文字認識（OCR）済み・目で確認を")}
           </div>
         ) : (
           tool === "mask" && hasText === false && <div className="page-badge">画像のみ・範囲指定で隠せます</div>

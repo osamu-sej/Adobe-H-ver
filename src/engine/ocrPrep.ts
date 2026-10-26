@@ -53,6 +53,30 @@ export function prepareOcrImage(
 }
 
 /**
+ * 画像の中の矩形を白く塗る（PDFの文字がある所を消して、画像や図の中の文字だけを読むため）。
+ * rects は元ページ空間の [x0, y0, x1, y1] × n、toImage はページ → 画素の変換。文字の端が残らないよう1画素広げる
+ */
+export function blankRects(
+  rgb: Uint8Array | Uint8ClampedArray,
+  width: number,
+  height: number,
+  stride: number,
+  rects: ArrayLike<number>,
+  toImage: [number, number, number, number, number, number],
+) {
+  const m = toImage;
+  const at = (x: number, y: number) => [x * m[0] + y * m[2] + m[4], x * m[1] + y * m[3] + m[5]];
+  for (let r = 0; r + 3 < rects.length; r += 4) {
+    const pts = [at(rects[r], rects[r + 1]), at(rects[r + 2], rects[r + 1]), at(rects[r], rects[r + 3]), at(rects[r + 2], rects[r + 3])];
+    const x0 = Math.max(0, Math.floor(Math.min(...pts.map((p) => p[0]))) - 1);
+    const y0 = Math.max(0, Math.floor(Math.min(...pts.map((p) => p[1]))) - 1);
+    const x1 = Math.min(width, Math.ceil(Math.max(...pts.map((p) => p[0]))) + 1);
+    const y1 = Math.min(height, Math.ceil(Math.max(...pts.map((p) => p[1]))) + 1);
+    for (let y = y0; y < y1; y++) rgb.fill(255, y * stride + x0 * 3, y * stride + x1 * 3);
+  }
+}
+
+/**
  * 濃い色で塗りつぶしたセルに白抜きの文字（赤いセルの気温など）は、セルの中の明るさを反転して、白地に黒い文字にする。
  * 濃い色の画素のまとまりのうち、大きくて四角をほぼ埋めているものをセルとみなす（濃い色の文字は細いので当たらない）
  */

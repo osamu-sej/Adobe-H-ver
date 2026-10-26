@@ -1,13 +1,14 @@
 import { engine } from "../engine/client";
 import { dropOcr, requestOcr } from "./ocr";
+import { mergeOcr, ocrPlan, visibleTextBoxes, withoutGarbled, type OcrMode } from "./pageText";
 import { useStore } from "./store";
 import { buildIndex, type TextIndex } from "./text";
 
 /** ページごとの文字層（大きいので状態管理の外に置き、更新は textVersion で知らせる） */
 const indexes = new Map<string, TextIndex>();
 const inflight = new Map<string, Promise<TextIndex>>();
-/** 文字認識（OCR）で文字層を作ったページ */
-const ocrPages = new Set<string>();
+/** 文字認識（OCR）で文字層を作った・文字を足したページ */
+const ocrPages = new Map<string, OcrMode>();
 
 const key = (docId: string, page: number) => `${docId}:${page}`;
 
@@ -33,16 +34,19 @@ export function ensureText(docId: string, page: number, priority = 3): Promise<T
   const p = engine
     .text(docId, page, priority)
     .then((t) => {
-      const idx = buildIndex(t);
+      const base = withoutGarbled(t);
+      const idx = buildIndex(base);
       indexes.set(k, idx);
       inflight.delete(k);
       bump();
-      // 文字がなく画像だけのページ（スキャン）は、文字認識で文字層を作る
-      if ((t.images ?? 0) > 0 && !t.chars.some((c) => c.trim() !== "")) {
-        requestOcr(docId, page, (text) => {
+      // スキャンしたページは文字認識で文字層を作る。画像や図の中の文字・文字化けした文字があるページは、その部分を読んで足す
+      const mode = ocrPlan(t);
+      if (mode) {
+        const blockers = mode === "extra" ? visibleTextBoxes(t) : undefined;
+        requestOcr(docId, page, mode, blockers, (text) => {
           if (!indexes.has(k)) return; // 認識中に閉じた
-          indexes.set(k, buildIndex(text));
-          ocrPages.add(k);
+          indexes.set(k, buildIndex(blockers ? mergeOcr(base, blockers, text) : text));
+          ocrPages.set(k, mode);
           bump();
         });
       }
@@ -63,7 +67,7 @@ export function loadAllTexts(docId: string, pageCount: number) {
 
 export function dropTexts(docId: string) {
   for (const k of [...indexes.keys()]) if (k.startsWith(docId + ":")) indexes.delete(k);
-  for (const k of [...ocrPages]) if (k.startsWith(docId + ":")) ocrPages.delete(k);
+  for (const k of [...ocrPages.keys()]) if (k.startsWith(docId + ":")) ocrPages.delete(k);
   dropOcr(docId);
 }
 
@@ -72,9 +76,14 @@ export function isOcrPage(docId: string, page: number): boolean {
   return ocrPages.has(key(docId, page));
 }
 
+/** 文字認識の使い方（ページ全体を読んだ／画像・図の中だけ読んで足した） */
+export function ocrMode(docId: string, page: number): OcrMode | undefined {
+  return ocrPages.get(key(docId, page));
+}
+
 export function ocrPageCount(docId: string): number {
   let n = 0;
-  for (const k of ocrPages) if (k.startsWith(docId + ":")) n++;
+  for (const k of ocrPages.keys()) if (k.startsWith(docId + ":")) n++;
   return n;
 }
 
