@@ -131,7 +131,10 @@ describe("文字認識の結果を文字層にする", () => {
 // ---- 文字の位置をインクに合わせる ----
 
 /** 白地に、文字のインクの代わりに太さ3の四角い枠を描いた画像。rules は表の縦の罫線（文字より上下に長い） */
-function inkImage(blobs: [number, number][], opts: { rules?: number[]; invert?: boolean } = {}): GrayImage {
+function inkImage(
+  blobs: [number, number][],
+  opts: { rules?: number[]; invert?: boolean; dots?: [number, number][]; commas?: [number, number][]; faint?: number[] } = {},
+): GrayImage {
   const W = 400;
   const H = 240;
   const bg = opts.invert ? 30 : 255;
@@ -147,6 +150,11 @@ function inkImage(blobs: [number, number][], opts: { rules?: number[]; invert?: 
     fill(Math.max(a, b - 3), b, 100, 140);
   }
   for (const r of opts.rules ?? []) fill(r, r + 2, 40, 200);
+  // 小数点（文字の下端の小さな点）とカンマ（下へ伸びる）
+  for (const [a, b] of opts.dots ?? []) fill(a, b, 134, 140);
+  for (const [a, b] of opts.commas ?? []) fill(a, b, 134, 146);
+  // 薄い縦線（文字の高さと同じ）
+  for (const r of opts.faint ?? []) for (let y = 100; y < 140; y++) data[y * W + r] = 200;
   return { data, width: W, height: H };
 }
 
@@ -163,6 +171,93 @@ function ocrWord(symbols: [string, number, number][], confidence = 95, bbox?: [n
 }
 
 const xs = (w: OcrWord) => w.symbols.map((s) => `${s.text}:${s.bbox.x0}-${s.bbox.x1}`).join(" ");
+
+describe("インクで読み違いを直す", () => {
+  it("単語の自信が低くても、1文字ずつ確かに読めた数字だけの単語は残す（「0.0」の単語の自信が 10 など）", () => {
+    const sure = ocrWord(
+      [
+        ["0", 100, 120],
+        [".", 126, 130],
+        ["0", 136, 156],
+      ],
+      10,
+    );
+    sure.symbols.forEach((s) => (s.confidence = 95));
+    expect(ocrToPageText([{ words: [sure] }], ID).chars.join("")).toBe("0.0");
+    // 文字の自信も低いもの、1文字だけのものは捨てる
+    const unsure = ocrWord(
+      [
+        ["5", 100, 120],
+        ["4", 126, 146],
+      ],
+      10,
+    );
+    expect(ocrToPageText([{ words: [unsure] }], ID).chars.join("")).toBe("");
+    const one = ocrWord([["7", 100, 120]], 0);
+    one.symbols[0].confidence = 95;
+    expect(ocrToPageText([{ words: [one] }], ID).chars.join("")).toBe("");
+  });
+
+  it("読み落とした小数点・カンマをインクから補う（「7.7」を「77」と読んだとき）", () => {
+    const w = ocrWord([
+      ["7", 100, 128],
+      ["7", 132, 156],
+    ]);
+    const digits: [number, number][] = [
+      [100, 120],
+      [136, 156],
+    ];
+    expect(ocrToPageText([{ words: [w] }], ID, inkImage(digits, { dots: [[125, 131]] })).chars.join("")).toBe("7.7");
+    expect(ocrToPageText([{ words: [w] }], ID, inkImage(digits, { commas: [[125, 131]] })).chars.join("")).toBe("7,7");
+    // 点がなければそのまま
+    expect(ocrToPageText([{ words: [w] }], ID, inkImage(digits)).chars.join("")).toBe("77");
+  });
+
+  it("同じ数字を二重に読んだとき（「71」を「771」）は、インクのない方を除く。くっついた2文字は除かない", () => {
+    const w = ocrWord([
+      ["7", 100, 118],
+      ["7", 104, 122],
+      ["1", 128, 140],
+    ]);
+    expect(
+      ocrToPageText(
+        [{ words: [w] }],
+        ID,
+        inkImage([
+          [100, 120],
+          [130, 138],
+        ]),
+      ).chars.join(""),
+    ).toBe("71");
+    // 「77」がくっついて1つのまとまりになったとき
+    const pair = ocrWord([
+      ["7", 100, 120],
+      ["7", 121, 142],
+    ]);
+    expect(ocrToPageText([{ words: [pair] }], ID, inkImage([[100, 142]])).chars.join("")).toBe("77");
+  });
+
+  it("表の枠線を「|」と読んだものは「1」にしない（「17.2|」）。数字と同じような縦棒は「1」", () => {
+    const digits: [number, number][] = [
+      [100, 108],
+      [115, 135],
+      [152, 172],
+    ];
+    const w = ocrWord([
+      ["1", 100, 108],
+      ["7", 115, 135],
+      [".", 141, 147],
+      ["2", 152, 172],
+      ["|", 180, 182],
+    ]);
+    // 上下に長い枠線
+    expect(ocrToPageText([{ words: [w] }], ID, inkImage(digits, { dots: [[141, 147]], rules: [180] })).chars.join("")).toBe("17.2");
+    // 数字と同じ高さの薄い線
+    expect(ocrToPageText([{ words: [w] }], ID, inkImage(digits, { dots: [[141, 147]], faint: [181] })).chars.join("")).toBe("17.2");
+    // 数字と同じ濃さ・太さ・高さなら「1」
+    expect(ocrToPageText([{ words: [w] }], ID, inkImage([...digits, [178, 186]], { dots: [[141, 147]] })).chars.join("")).toBe("17.21");
+  });
+});
 
 describe("文字の位置をインクに合わせる", () => {
   // 「10.7」のインク

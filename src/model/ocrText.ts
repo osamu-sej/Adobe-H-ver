@@ -65,6 +65,10 @@ const RUN_PAD = 0.2;
 const LIKE_ONE = new Set(["l", "I", "|", "!", "]", "[", "i", "j", "¦", "ｌ", "Ｉ", "｜", "丨"]);
 /** 数字の隣にあるときは「0」の読み違いとみなす文字 */
 const LIKE_ZERO = new Set(["O", "o", "〇", "○", "Ｏ", "ｏ"]);
+/** 数字の高さのこの倍より高い縦棒は、表の枠線とみなす（「1」に直さず捨てる） */
+const TALL_BAR = 1.4;
+/** 数字の線の太さのこの割合より細い（薄い）縦棒も、表の枠線とみなす */
+const THIN_BAR = 0.6;
 /** 数字に挟まれているときは「-」の読み違いとみなす文字（漢数字の「一」など） */
 const LIKE_DASH = new Set(["一", "ー", "—", "–", "―", "－", "‐", "~", "〜", "_"]);
 
@@ -301,12 +305,12 @@ function snapGroup(words: OcrWord[], img: GrayImage, others: OcrBox[]): OcrWord[
   const rows = inkRows(img, x0, x1, y0, y1);
   const h = rows && rows.y1 - rows.y0 >= 4 ? rows.y1 - rows.y0 : y1 - y0;
   // 幅のない記号（「2」に重なった「」」など）は読み違いのかけら。割り当てに使わず、そのままにする。
-  // 数字は幅がなくても、読めた数字の分のインクがあるはずなので使う
+  // 数字は幅がなくても、読めた数字の分のインクがあるはずなので使う。
+  // 文字は読んだ順のまま（認識の枠は重なり合っていることがあり、左端で並べ直すと「234」が「324」になる）
   const order = words.flatMap((w, wi) =>
     w.symbols
       .map((s, si) => ({ s, wi, si }))
-      .filter(({ s }) => s.text.trim() && (s.bbox.x1 - s.bbox.x0 >= h * 0.06 || digit(s.text.normalize("NFKC"))))
-      .sort((a, b) => a.s.bbox.x0 - b.s.bbox.x0),
+      .filter(({ s }) => s.text.trim() && (s.bbox.x1 - s.bbox.x0 >= h * 0.06 || digit(s.text.normalize("NFKC")))),
   );
   if (!order.length) return words;
   // 罫線のかけらなど、細すぎるインクは文字ではない
@@ -422,6 +426,23 @@ function snapGroup(words: OcrWord[], img: GrayImage, others: OcrBox[]): OcrWord[
       .filter((x) => x >= h * 0.25);
   const widths = widthsOf(true).length ? widthsOf(true) : widthsOf(false);
   const digitW = widths.length ? median(widths) : h * 0.6;
+  const dots = findMissedDots(img, segs, assigned, isDigitSym, h, y0, y1);
+  // 同じ数字を二重に読んだ（「71」を「771」など）：インクのない数字の隣に、数字1つ分のインクを取った同じ数字があれば、余分とみなして除く。
+  // くっついた2文字（幅が数字1つ分より広い）は除かない
+  const dropped = new Set<number>();
+  for (let k = 0; k < m; k++) {
+    if (!isDigitSym[k] || assigned[k].length) continue;
+    const twin = [k - 1, k + 1].some(
+      (nb) =>
+        nb >= 0 &&
+        nb < m &&
+        order[nb].wi === order[k].wi &&
+        order[nb].s.text === order[k].s.text &&
+        assigned[nb].length === 1 &&
+        segs[assigned[nb][0]].x1 - segs[assigned[nb][0]].x0 <= Math.min(digitW * 1.3, h * 0.8),
+    );
+    if (twin) dropped.add(k);
+  }
   const ranges: (Segment | null)[] = assigned.map((a, k) => {
     if (!a.length) return null;
     let use = a.map((i) => segs[i]);
@@ -435,7 +456,7 @@ function snapGroup(words: OcrWord[], img: GrayImage, others: OcrBox[]): OcrWord[
   });
   // くっついた2文字（「0円」など）が1つのまとまりになり、片方にインクがないときは、認識の位置の中間で分ける
   for (let k = 0; k < m; k++) {
-    if (ranges[k]) continue;
+    if (ranges[k] || dropped.has(k)) continue;
     for (const nb of [k - 1, k + 1]) {
       const r = ranges[nb];
       if (!r || symC[k] <= r.x0 || symC[k] >= r.x1) continue;
@@ -462,13 +483,96 @@ function snapGroup(words: OcrWord[], img: GrayImage, others: OcrBox[]): OcrWord[
     const v = inkRows(img, r.x0, r.x1, w.y0, w.y1);
     out[wi].symbols[si] = { ...s, bbox: { x0: r.x0, x1: r.x1, y0: v ? v.y0 : w.y0, y1: v ? v.y1 : w.y1 } };
   });
+  // 二重に読んだ数字を除き、読み落とした小数点・カンマを数字の間に入れる
+  if (dropped.size || dots.length) {
+    const at = (k: number) => `${order[k].wi}:${order[k].si}`;
+    const gone = new Set([...dropped].map(at));
+    const add = new Map<string, { before: OcrSymbol[]; after: OcrSymbol[] }>();
+    for (const d of dots) {
+      const e = add.get(at(d.k)) ?? { before: [], after: [] };
+      (d.after ? e.after : e.before).push(d.symbol);
+      add.set(at(d.k), e);
+    }
+    out.forEach((w, wi) => {
+      w.symbols = w.symbols.flatMap((s, si) => {
+        const e = add.get(`${wi}:${si}`);
+        return gone.has(`${wi}:${si}`) ? [] : [...(e?.before ?? []), s, ...(e?.after ?? [])];
+      });
+    });
+  }
   // 1文字に1つずつ、近くのインクが対応したか（認識の自信が低くても、本物の文字とみなせる）
   // 1文字だけの単語は写真の模様でも偶然そろうので数えない
   return out.map((w, wi) => {
-    const ks = order.map((o, k) => (o.wi === wi ? k : -1)).filter((k) => k >= 0);
+    const ks = order.map((o, k) => (o.wi === wi && !dropped.has(k) ? k : -1)).filter((k) => k >= 0);
     const inkMatched = ks.length >= 2 && ks.every((k) => assigned[k].length === 1 && cost(assigned[k][0], k) < 0.35);
     return { ...w, inkMatched };
   });
+}
+
+/**
+ * 読み落とした小数点・カンマ（「7.7」を「77」と読んだときの「.」など）を、インクから見つける。
+ * 数字に割り当てた2つ目以降のまとまりのうち、隣の数字の側の端にある、文字の下の方の小さな点を取り出す
+ * （assigned から除く）。数字の下端より下へ伸びていればカンマとする
+ */
+function findMissedDots(
+  img: GrayImage,
+  segs: Segment[],
+  assigned: number[][],
+  isDigitSym: boolean[],
+  h: number,
+  y0: number,
+  y1: number,
+): { k: number; after: boolean; symbol: OcrSymbol }[] {
+  const out: { k: number; after: boolean; symbol: OcrSymbol }[] = [];
+  // 数字の下端（1つのまとまりだけを取った、数字らしい幅の数字から）
+  const bottoms: number[] = [];
+  assigned.forEach((a, k) => {
+    if (!isDigitSym[k] || a.length !== 1 || segs[a[0]].x1 - segs[a[0]].x0 < h * 0.25) return;
+    const r = inkRows(img, segs[a[0]].x0, segs[a[0]].x1, y0, y1);
+    if (r) bottoms.push(r.y1);
+  });
+  if (!bottoms.length) return out;
+  const base = median(bottoms);
+  for (let k = 0; k < assigned.length; k++) {
+    const a = assigned[k];
+    if (!isDigitSym[k] || a.length < 2) continue;
+    for (const side of [-1, 1]) {
+      const nb = k + side;
+      if (nb < 0 || nb >= assigned.length || !isDigitSym[nb]) continue;
+      const g = segs[side < 0 ? a[0] : a[a.length - 1]];
+      if (g.x1 - g.x0 > h * 0.35) continue;
+      const r = inkRows(img, g.x0, g.x1, y0, y1 + h * 0.25);
+      // 小さく、下の方にある（「1」のように縦に長いもの、「-」のように中ほどのものは除く）
+      if (!r || r.y1 - r.y0 > h * 0.4 || r.y0 < base - h * 0.35 || r.y1 < base - h * 0.15) continue;
+      a.splice(side < 0 ? 0 : a.length - 1, 1);
+      const text = r.y1 > base + h * 0.1 ? "," : ".";
+      out.push({ k, after: side > 0, symbol: { text, confidence: 90, bbox: { x0: g.x0, x1: g.x1, y0: r.y0, y1: r.y1 } } });
+      break;
+    }
+  }
+  return out;
+}
+
+/**
+ * 文字の線の太さ（画素）：文字の中ほどの高さの各行で、いちばん長く続く暗い画素の数の中ほどの値。
+ * 薄い線は暗い画素がないので 0 になる
+ */
+function stemWidth(img: GrayImage, b: OcrBox): number {
+  const { data, width: W, height: H } = img;
+  const x0 = Math.max(0, Math.floor(b.x0) - 2);
+  const x1 = Math.min(W, Math.ceil(b.x1) + 2);
+  const h = b.y1 - b.y0;
+  const runs: number[] = [];
+  for (let y = Math.max(0, Math.floor(b.y0 + h * 0.3)); y < Math.min(H, Math.ceil(b.y1 - h * 0.3)); y++) {
+    let best = 0;
+    let run = 0;
+    for (let x = x0; x < x1; x++) {
+      run = data[y * W + x] < 128 ? run + 1 : 0;
+      best = Math.max(best, run);
+    }
+    runs.push(best);
+  }
+  return runs.length ? median(runs) : 0;
 }
 
 /**
@@ -553,6 +657,20 @@ function partOfNumber(w: OcrWord, words: OcrWord[]): boolean {
   });
 }
 
+/**
+ * 数字だけの単語（「0.0」「54」など）で、数字の1文字ずつは自信をもって読めているか。
+ * 日本語のモデルは数字だけの単語に低い自信を付けやすく（「0.0」が 10 など）、単語の自信だけで捨てると表の数字が抜ける。
+ * 1文字だけの数字は、罫線や汚れの読み違いのことがあるので含めない
+ */
+const SURE_DIGIT = 80;
+function sureNumber(w: OcrWord): boolean {
+  const symbols = w.symbols.filter((s) => s.text.trim() && s.text !== "_");
+  const text = symbols.map((s) => s.text.normalize("NFKC")).join("");
+  if (!/^[+\-−▲△]?\d[\d,.]*%?$/.test(text)) return false;
+  const digits = symbols.filter((s) => digit(s.text.normalize("NFKC")));
+  return digits.length >= 2 && digits.every((s) => s.confidence >= SURE_DIGIT);
+}
+
 /** 日本語の文字（漢字・かな・記号）。日本語の文の中の単語の切れ目には、ふつう空白を入れない */
 const CJK = /[　-ヿ㐀-鿿＀-￯]/;
 
@@ -585,9 +703,26 @@ export function ocrToPageText(lines: OcrLine[], toPage: Matrix6, img?: GrayImage
 
   for (const l of lines) {
     const words: Glyph[][] = [];
-    for (const w of l.words) {
+    // 表の枠線を読み違えた縦棒（「17.2|」の「|」など）は「1」に直さず捨てる。
+    // 数字よりずっと高いもの、数字の線よりずっと細い（または薄い）ものは枠線
+    const digitSyms = l.words.flatMap((w) => w.symbols.filter((s) => digit(s.text.normalize("NFKC"))));
+    const digitH = digitSyms.length ? median(digitSyms.map((s) => s.bbox.y1 - s.bbox.y0)) : 0;
+    const strokes = img ? digitSyms.map((s) => stemWidth(img, s.bbox)).filter((v) => v > 0) : [];
+    const stroke = strokes.length ? median(strokes) : 0;
+    const ruleBar = (s: OcrSymbol) => {
+      if (!digitH || !LIKE_ONE.has(s.text)) return false;
+      if (s.bbox.y1 - s.bbox.y0 > digitH * TALL_BAR) return true;
+      if (!img) return false;
+      // 認識の枠は数字の高さで切れていることがあるので、画像で縦棒の上下を確かめる
+      const run = inkRows(img, s.bbox.x0 - 2, s.bbox.x1 + 2, s.bbox.y0 - digitH * 1.5, s.bbox.y1 + digitH * 1.5);
+      if (run && run.y1 - run.y0 > digitH * TALL_BAR) return true;
+      return stroke > 0 && stemWidth(img, s.bbox) < stroke * THIN_BAR;
+    };
+    for (let w of l.words) {
       const digits = w.symbols.filter((s) => /\d/.test(s.text.normalize("NFKC"))).length;
-      if (w.confidence < MIN_WORD_CONFIDENCE && digits < KEEP_DIGITS && !w.inkMatched && !partOfNumber(w, l.words)) continue;
+      if (w.confidence < MIN_WORD_CONFIDENCE && digits < KEEP_DIGITS && !w.inkMatched && !partOfNumber(w, l.words) && !sureNumber(w))
+        continue;
+      if (w.symbols.some(ruleBar)) w = { ...w, symbols: w.symbols.filter((s) => !ruleBar(s)) };
       // 文字の大きさは単語の高さ。単語の枠が2行にまたがって高すぎるときは、文字のインクの高さから見積もる
       const wordH = Math.max(1, w.bbox.y1 - w.bbox.y0);
       const inkH = w.snapped
@@ -603,7 +738,8 @@ export function ocrToPageText(lines: OcrLine[], toPage: Matrix6, img?: GrayImage
         const y = w.snapped ? s.bbox : w.bbox;
         glyphs.push({ text: s.text, conf: s.confidence, x0: s.bbox.x0, x1: s.bbox.x1, y0: y.y0, y1: y.y1, em });
       }
-      if (glyphs.length) words.push(glyphs.sort((a, b) => a.x0 - b.x0));
+      // 単語の中は読んだ順のまま（インクに合わせられなかった文字の枠で並べ直すと、順番が入れ替わることがある）
+      if (glyphs.length) words.push(glyphs);
     }
     words.sort((a, b) => a[0].x0 - b[0].x0);
     // 行の中の文字を並べ、単語の切れ目を覚えておく
