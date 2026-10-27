@@ -1,4 +1,4 @@
-import type { GrayImage, OcrBox, OcrLine, OcrWord } from "./ocrText";
+import type { GrayImage, OcrBox, OcrLine, OcrSymbol, OcrWord } from "./ocrText";
 
 /**
  * 文字認識の読み残しを読み直す。
@@ -300,7 +300,7 @@ export function fromCollage(lines: OcrLine[], c: FillCollage): OcrLine[] {
 }
 
 /**
- * 1回目と読み直しの結果を合わせる。読み直した単語のうち、1回目に読めた単語と重なるもの（同じ文字の読み直し）は除く。
+ * 1回目と読み直しの結果を合わせる。読み直した文字のうち、1回目に読めた単語の中にあるもの（同じ文字の読み直し）は除く。
  * 1回目に読めたとみなさない単語（読み違い）は、重なる所を読み直した単語のほうが自信があれば、読み直した単語に置き換える
  */
 export function mergeFill(first: OcrLine[], again: OcrLine[]): OcrLine[] {
@@ -311,9 +311,39 @@ export function mergeFill(first: OcrLine[], again: OcrLine[]): OcrLine[] {
     return ix > 0 && iy > 0 && ix * iy > area * 0.3;
   };
   const read = readBoxes(first);
-  const added = again
-    .map((l) => ({ words: l.words.filter((w) => !read.some((b) => overlaps(b, w.bbox))) }))
-    .filter((l) => l.words.length);
+  // 読めた単語と重なる単語は、読めた単語の外にある文字だけを残す（行ごと読み直して「12」の続きの「3」まで
+  // 「123」と読めたときに、「3」を落とさないように）。数字を含まない残り（罫線のかけらなど）は足さない
+  const inRead = (s: OcrSymbol) => {
+    const cx = (s.bbox.x0 + s.bbox.x1) / 2;
+    const cy = (s.bbox.y0 + s.bbox.y1) / 2;
+    return read.some((b) => cx >= b.x0 && cx <= b.x1 && cy >= b.y0 && cy <= b.y1);
+  };
+  const outside = (w: OcrWord): OcrWord[] => {
+    if (!read.some((b) => overlaps(b, w.bbox))) return [w];
+    const out: OcrWord[] = [];
+    let run: OcrSymbol[] = [];
+    const flush = () => {
+      if (run.some((s) => /\d/.test(s.text.normalize("NFKC"))))
+        out.push({
+          confidence: w.confidence,
+          bbox: {
+            x0: Math.min(...run.map((s) => s.bbox.x0)),
+            y0: Math.min(...run.map((s) => s.bbox.y0)),
+            x1: Math.max(...run.map((s) => s.bbox.x1)),
+            y1: Math.max(...run.map((s) => s.bbox.y1)),
+          },
+          symbols: run,
+        });
+      run = [];
+    };
+    for (const s of w.symbols) {
+      if (s.text.trim() && !inRead(s)) run.push(s);
+      else flush();
+    }
+    flush();
+    return out;
+  };
+  const added = again.map((l) => ({ words: l.words.flatMap(outside) })).filter((l) => l.words.length);
   const addedWords = added.flatMap((l) => l.words);
   // 置き換えるのは、読み直した単語が1回目の単語の半分以上を覆い、平均の自信が上回り、数字が減らないとき
   // （かすれた「0.5」を「5」と読み直したときなどに、数字を落とさないように）

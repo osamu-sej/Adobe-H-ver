@@ -59,6 +59,10 @@ describe("読み残しの読み直し", () => {
     ]);
     const part: OcrLine[] = [{ words: [word("12", box(20, 20, 56, 50))] }];
     expect(unreadGroups(row, part).map((g) => g.box)).toEqual([box(20, 20, 78, 50)]);
+    // 読み直しで「123」と1つの単語に読めたときは、読めた「12」の外の「3」を足す
+    const merged = mergeFill(part, [{ words: [word("123", box(20, 20, 78, 50))] }]);
+    expect(merged.flatMap((l) => l.words.map((w) => w.symbols.map((s) => s.text).join("")))).toEqual(["12", "3"]);
+    expect(merged[1].words[0].bbox.x0).toBeCloseTo(20 + (58 * 2) / 3);
   });
 
   it("切り出した行は、薄い文字を濃くして縦に並べ、読めた位置を元の画像に戻す", () => {

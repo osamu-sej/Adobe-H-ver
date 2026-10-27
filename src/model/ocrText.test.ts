@@ -269,6 +269,24 @@ describe("インクで読み違いを直す", () => {
         ]),
       ).chars.join(""),
     ).toBe("71");
+    // 後ろに単位があっても同じ（「円」のインクは数字の分に数えない）
+    const yen = ocrWord([
+      ["7", 100, 118],
+      ["7", 104, 122],
+      ["1", 128, 140],
+      ["円", 146, 176],
+    ]);
+    expect(
+      ocrToPageText(
+        [{ words: [yen] }],
+        ID,
+        inkImage([
+          [100, 120],
+          [130, 138],
+          [146, 176],
+        ]),
+      ).chars.join(""),
+    ).toBe("71円");
     // 「77」がくっついて1つのまとまりになったとき
     const pair = ocrWord([
       ["7", 100, 120],
@@ -351,6 +369,26 @@ describe("インクで読み違いを直す", () => {
     expect(ocrToPageText([{ words: [w] }], ID, inkImage(digits, { slashes: [[140, 156]] })).chars.join("")).toBe("10/15");
     // 上の横棒がある本当の「7」はそのまま
     expect(ocrToPageText([{ words: [w] }], ID, inkImage([...digits, [140, 156]])).chars.join("")).toBe("10715");
+  });
+
+  it("同じインクを違う2文字に読んだ単語（「10/15」を「10/715」）は、インクが対応したとみなさない（読み直す）", () => {
+    const w = ocrWord([
+      ["1", 100, 108],
+      ["0", 115, 135],
+      ["/", 140, 156],
+      ["7", 162, 170],
+      ["1", 176, 196],
+      ["5", 190, 196],
+    ]);
+    const digits: [number, number][] = [
+      [100, 108],
+      [115, 135],
+      [162, 170],
+      [176, 196],
+    ];
+    const [l] = snapToInk([{ words: [w] }], inkImage(digits, { slashes: [[140, 156]] }));
+    expect(l.words[0].symbols.map((s) => s.text).join("")).toBe("10/71");
+    expect(l.words[0].inkMatched).toBe(false);
   });
 
   it("くっついた数字のまとまり（「53466」の「46」）があっても、数字の数だけインクがあれば最後の数字を除かない", () => {

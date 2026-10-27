@@ -109,6 +109,18 @@ describe("色の付いた文字・網掛け・詰まった表", () => {
     expect(g[30 * W + 200]).toBe(255);
   });
 
+  it("黄色のセルの隣の濃い色のセルの白抜きの文字は、黄色の地の扱いで消さない", () => {
+    const W = 300;
+    const { data, fill } = canvas(W, 260);
+    fill(20, 20, 150, 240, [250, 235, 120]);
+    fill(150, 20, 280, 240, [20, 30, 100]);
+    glyph(fill, 154, 40, [255, 255, 255]);
+    const g = prepareOcrImage(data, W, 260, W * 3, 300);
+    // 白抜きの文字の縦画は黒く、太さも残る。セルの地は白
+    for (const x of [154, 156, 158]) expect(g[60 * W + x]).toBeLessThan(80);
+    expect(g[60 * W + 200]).toBe(255);
+  });
+
   it("オレンジのセルの地と、黒い文字との境目のにじみは黒くしない", () => {
     const W = 300;
     const { data, fill } = canvas(W, 160);

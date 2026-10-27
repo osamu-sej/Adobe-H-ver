@@ -74,12 +74,14 @@ function yellowHue(r: number, g: number, b: number, hi: number, sat: number): bo
 /**
  * 黄色の地（黄色のセルやマーカー）の上の文字は、赤と緑の暗い方の明るさで濃淡にする。
  * 黄色の地の上の黒い文字は、地と混じって黄土色のむらになり、色の付いた文字として一部だけ黒くするとまだらになるため。
- * 黄色の地は赤と緑が明るいので白に近いまま、文字は赤も緑も暗いので濃く残る。この中は色の付いた文字として扱わない
+ * 黄色の地は赤と緑が明るいので白に近いまま、文字は赤も緑も暗いので濃く残る。この中は色の付いた文字として扱わない。
+ * 隣の濃い色のセル（反転して白地に黒い文字にしたもの）には当てない
  */
 function darkenOnYellow(
   g: Uint8Array,
   ink: Uint8Array,
   yellow: Uint8Array,
+  inverted: Uint8Array,
   rgb: Uint8Array | Uint8ClampedArray,
   w: number,
   h: number,
@@ -92,7 +94,7 @@ function darkenOnYellow(
   for (let y = 0; y < h; y++) {
     let o = y * stride;
     for (let x = 0, i = y * w; x < w; x++, i++, o += 3) {
-      if (share[i] < need) continue;
+      if (share[i] < need || inverted[i]) continue;
       // オレンジの文字（赤は明るく、緑だけ暗い）も黒くなるよう、地との差を広げる
       const v = Math.min(rgb[o], rgb[o + 1]);
       g[i] = Math.min(g[i], Math.max(0, Math.round(v - (255 - v) * YELLOW_GAIN)));
@@ -151,8 +153,8 @@ export function prepareOcrImage(
     }
   }
   const k = dpi / 300;
-  invertDeepCells(g, deep, rgb, width, height, stride, k);
-  darkenOnYellow(g, ink, yellow, rgb, width, height, stride, k);
+  const inverted = invertDeepCells(g, deep, rgb, width, height, stride, k);
+  darkenOnYellow(g, ink, yellow, inverted, rgb, width, height, stride, k);
   darkenColorInk(g, ink, warm, warmFill, black, rgb, width, height, stride, k);
   // 薄い灰色（紙の地や網掛けのセル）を先に白にする。網掛けの中の罫線も、両側が白になって消せる
   whitenPaper(g, width, height, k);
@@ -231,7 +233,8 @@ export function blankRects(
 
 /**
  * 濃い色で塗りつぶしたセルに白抜きの文字（赤いセルの気温など）は、セルの中の明るさを反転して、白地に黒い文字にする。
- * 濃い色の画素のまとまりのうち、大きくて四角をほぼ埋めているものをセルとみなす（濃い色の文字は細いので当たらない）
+ * 濃い色の画素のまとまりのうち、大きくて四角をほぼ埋めているものをセルとみなす（濃い色の文字は細いので当たらない）。
+ * 反転したセルの画素に印を付けて返す
  */
 function invertDeepCells(
   g: Uint8Array,
@@ -241,7 +244,8 @@ function invertDeepCells(
   h: number,
   stride: number,
   k: number,
-) {
+): Uint8Array {
+  const inverted = new Uint8Array(w * h);
   for (const c of filledRegions(deep, w, h, k)) {
     // セルの中を反転し、地（反転して明るい灰色）を白にする
     for (let y = c.y0; y < c.y1; y++)
@@ -249,8 +253,10 @@ function invertDeepCells(
         const o = y * stride + x * 3;
         const inv = 255 - (0.299 * rgb[o] + 0.587 * rgb[o + 1] + 0.114 * rgb[o + 2]);
         g[y * w + x] = Math.min(255, Math.round((inv * 255) / CELL_PAPER));
+        inverted[y * w + x] = 1;
       }
   }
+  return inverted;
 }
 
 /**
