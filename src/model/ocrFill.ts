@@ -23,23 +23,29 @@ const MAX_SCALE = 3;
 const MAX_COLLAGE_H = 6000;
 
 interface Comp extends OcrBox {
-  n: number;
+  /** このまとまりの画素の連なり（runs の番号） */
+  runs: number[];
 }
 
-/** 読み直す行の範囲（元の画像の画素） */
-export type FillBox = OcrBox;
+/** 読み直す1行：範囲（元の画像の画素）と、その行のインクの画素の連なり（行ごとの [y, x0, x1]） */
+export interface FillGroup {
+  box: OcrBox;
+  runs: [number, number, number][];
+}
 
 /** 1回目の認識で確かに読めた単語の自信（これより低い単語の所は、読み違いかもしれないので読み直す） */
 const SURE = 60;
 
 /**
- * 1回目に読めたとみなす単語：確かに読めた単語と、数字を読んだ単語（数字は自信が低くても、読み直すとかえって崩れやすい）。
- * ただし自信がなく、数字と英字が混じった単語（「879nsr2m5」など、薄い文字や絵の読み違い）は読めたことにしない
+ * 1回目に読めたとみなす単語：確かに読めた単語と、1文字ずつインクが対応した数字の単語（inkMatched。snapToInk で調べる）。
+ * インクを調べていなければ、数字を読んだ単語は、自信がなく数字と英字が混じったもの（「879nsr2m5」など、
+ * 薄い文字や絵の読み違い）のほかは読めたとみなす
  */
 function wasRead(w: OcrWord): boolean {
   if (w.confidence >= SURE) return true;
   const t = w.symbols.map((s) => s.text.normalize("NFKC")).join("");
   if (!/\d/.test(t)) return false;
+  if (w.inkMatched !== undefined) return w.inkMatched;
   return w.confidence >= 30 || !/[A-Za-z]/.test(t);
 }
 
@@ -51,86 +57,90 @@ function readBoxes(lines: OcrLine[]): OcrBox[] {
 }
 
 /** インクのまとまり（8近傍でつながった画素）を、行ごとの連なりをつなげて求める */
-function components(img: GrayImage, x0: number, y0: number, x1: number, y1: number): Comp[] {
-  const { data, width: W } = img;
+function components(img: GrayImage): { comps: Comp[]; runs: [number, number, number][] } {
+  const { data, width: W, height: H } = img;
   const parent: number[] = [];
   const find = (a: number): number => {
     while (parent[a] !== a) a = parent[a] = parent[parent[a]];
     return a;
   };
-  const runs: { x0: number; x1: number; y: number; id: number }[] = [];
-  let prev: { x0: number; x1: number; id: number }[] = [];
-  for (let y = y0; y < y1; y++) {
-    const cur: { x0: number; x1: number; id: number }[] = [];
-    let x = x0;
-    while (x < x1) {
-      while (x < x1 && data[y * W + x] >= FILL_INK) x++;
-      if (x >= x1) break;
+  const runs: [number, number, number][] = [];
+  let prev: number[] = [];
+  for (let y = 0; y < H; y++) {
+    const cur: number[] = [];
+    let x = 0;
+    while (x < W) {
+      while (x < W && data[y * W + x] >= FILL_INK) x++;
+      if (x >= W) break;
       const a = x;
-      while (x < x1 && data[y * W + x] < FILL_INK) x++;
-      const id = parent.length;
-      parent.push(id);
-      cur.push({ x0: a, x1: x, id });
-      runs.push({ x0: a, x1: x, y, id });
+      while (x < W && data[y * W + x] < FILL_INK) x++;
+      parent.push(runs.length);
+      cur.push(runs.length);
+      runs.push([y, a, x]);
     }
     // 上の行の連なりと重なる（斜めも含む）ものをつなぐ
     let j = 0;
     for (const r of cur) {
-      while (j < prev.length && prev[j].x1 < r.x0) j++;
-      for (let k = j; k < prev.length && prev[k].x0 <= r.x1; k++) {
-        const a = find(r.id);
-        const b = find(prev[k].id);
+      while (j < prev.length && runs[prev[j]][2] < runs[r][1]) j++;
+      for (let k = j; k < prev.length && runs[prev[k]][1] <= runs[r][2]; k++) {
+        const a = find(r);
+        const b = find(prev[k]);
         if (a !== b) parent[a] = b;
       }
     }
     prev = cur;
   }
   const byRoot = new Map<number, Comp>();
-  for (const r of runs) {
-    const root = find(r.id);
+  runs.forEach(([y, x0, x1], i) => {
+    const root = find(i);
     const c = byRoot.get(root);
     if (c) {
-      c.x0 = Math.min(c.x0, r.x0);
-      c.x1 = Math.max(c.x1, r.x1);
-      c.y0 = Math.min(c.y0, r.y);
-      c.y1 = Math.max(c.y1, r.y + 1);
-      c.n += r.x1 - r.x0;
-    } else byRoot.set(root, { x0: r.x0, x1: r.x1, y0: r.y, y1: r.y + 1, n: r.x1 - r.x0 });
-  }
-  return [...byRoot.values()];
+      c.x0 = Math.min(c.x0, x0);
+      c.x1 = Math.max(c.x1, x1);
+      c.y0 = Math.min(c.y0, y);
+      c.y1 = Math.max(c.y1, y + 1);
+      c.runs.push(i);
+    } else byRoot.set(root, { x0, x1, y0: y, y1: y + 1, runs: [i] });
+  });
+  return { comps: [...byRoot.values()], runs };
 }
 
 /**
- * 読み残したインクのまとまりを、行ごとの範囲にまとめて返す。
+ * 読み残しのある行を返す。インクのまとまりを行ごとにまとめ、1回目に読めた単語の外にある
+ * 文字の大きさのまとまりを含む行を、その行のインク全部（読めた所も含む）で返す。
  * dpi は画像の解像度（文字の大きさの目安に使う）
  */
-export function unreadBoxes(img: GrayImage, lines: OcrLine[], dpi = 300): FillBox[] {
+export function unreadGroups(img: GrayImage, lines: OcrLine[], dpi = 300): FillGroup[] {
   const k = dpi / 300;
   const read = readBoxes(lines);
   const minH = MIN_H * k;
   const maxH = MAX_H * k;
-  const comps = components(img, 0, 0, img.width, img.height).filter((c) => {
+  const { comps: all, runs } = components(img);
+  const comps = all.filter((c) => {
     const h = c.y1 - c.y0;
     const w = c.x1 - c.x0;
-    if (h > maxH || w > maxH * MAX_ASPECT || w > h * MAX_ASPECT + 2 * k) return false;
-    // 読めた単語の中や縁にあるものは除く
-    return !read.some((b) => {
+    return h <= maxH && w <= maxH * MAX_ASPECT && w <= h * MAX_ASPECT + 2 * k;
+  });
+  // 読めた単語の中や縁にあるか
+  const covered = comps.map((c) =>
+    read.some((b) => {
       const m = Math.min(b.y1 - b.y0, maxH) * 0.2;
       return c.x0 < b.x1 + m && c.x1 > b.x0 - m && c.y0 < b.y1 + m && c.y1 > b.y0 - m;
-    });
-  });
-  comps.sort((a, b) => a.x0 - b.x0);
+    }),
+  );
+  const order = comps.map((_, i) => i);
+  order.sort((a, b) => comps[a].x0 - comps[b].x0);
   // 同じ高さに並び、間の狭いまとまりを1行にまとめる（小数点のような小さな点も、隣の文字と同じ行に入れる）
-  const parent = comps.map((_, i) => i);
+  const parent = new Map<number, number>(order.map((i) => [i, i]));
   const find = (a: number): number => {
-    while (parent[a] !== a) a = parent[a] = parent[parent[a]];
+    while (parent.get(a) !== a) a = parent.get(a)!;
     return a;
   };
-  for (let i = 0; i < comps.length; i++) {
-    const a = comps[i];
+  for (let p = 0; p < order.length; p++) {
+    const a = comps[order[p]];
     const ha = a.y1 - a.y0;
-    for (let j = i + 1; j < comps.length; j++) {
-      const b = comps[j];
+    for (let q = p + 1; q < order.length; q++) {
+      const b = comps[order[q]];
       const hb = b.y1 - b.y0;
       const h = Math.max(ha, hb, minH);
       if (b.x0 - a.x1 > h * JOIN_GAP) {
@@ -138,28 +148,31 @@ export function unreadBoxes(img: GrayImage, lines: OcrLine[], dpi = 300): FillBo
         continue;
       }
       const overlap = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
-      const small = Math.min(ha, hb);
       // 縦に重なる（点や記号は、大きい方の文字の高さの中にある）
-      if (overlap >= small * 0.5) parent[find(j)] = find(i);
+      if (overlap >= Math.min(ha, hb) * 0.5) parent.set(find(order[q]), find(order[p]));
     }
   }
-  const groups = new Map<number, { box: OcrBox; tall: number }>();
-  comps.forEach((c, i) => {
+  const groups = new Map<number, { members: number[]; box: OcrBox; seed: boolean }>();
+  for (const i of order) {
+    const c = comps[i];
     const r = find(i);
     const g = groups.get(r);
-    const h = c.y1 - c.y0;
+    const seed = !covered[i] && c.y1 - c.y0 >= minH;
     if (g) {
+      g.members.push(i);
       g.box = {
         x0: Math.min(g.box.x0, c.x0),
         y0: Math.min(g.box.y0, c.y0),
         x1: Math.max(g.box.x1, c.x1),
         y1: Math.max(g.box.y1, c.y1),
       };
-      g.tall = Math.max(g.tall, h);
-    } else groups.set(r, { box: { x0: c.x0, y0: c.y0, x1: c.x1, y1: c.y1 }, tall: h });
-  });
-  // 文字の高さのまとまりがない行（点や小さなかけらだけ）、高すぎる行は読まない
-  return [...groups.values()].filter((g) => g.tall >= minH && g.box.y1 - g.box.y0 <= maxH).map((g) => g.box);
+      g.seed ||= seed;
+    } else groups.set(r, { members: [i], box: { x0: c.x0, y0: c.y0, x1: c.x1, y1: c.y1 }, seed });
+  }
+  // 文字の高さの読み残しがない行（読めた行、点や小さなかけらだけ）、高すぎる行は読まない
+  return [...groups.values()]
+    .filter((g) => g.seed && g.box.y1 - g.box.y0 <= maxH)
+    .map((g) => ({ box: g.box, runs: g.members.flatMap((i) => comps[i].runs.map((r) => runs[r])) }));
 }
 
 /** 読み直す画像の中の1行：元の画像の範囲 src と、並べた画像での位置（左上）と倍率 */
@@ -179,33 +192,49 @@ export interface FillCollage {
 
 /**
  * 読み直す行を切り出して、1枚（多ければ数枚）の画像に縦に並べる。
- * 行ごとに明るさを伸ばして（薄い灰色の文字も黒く）、小さい文字は拡大する。
+ * 行のインクだけを写し（上下の行の文字の端が入らないように）、明るさを伸ばして（薄い灰色の文字も黒く）、小さい文字は拡大する。
  * 伸ばした明るさは元の画像にも書き戻す（あとでインクに位置を合わせるため）
  */
-export function buildCollages(img: GrayImage, boxes: FillBox[]): FillCollage[] {
+export function buildCollages(img: GrayImage, groups: FillGroup[]): FillCollage[] {
   const { data, width: W, height: H } = img;
-  type Item = { src: OcrBox; scale: number; w: number; h: number };
+  type Item = { src: OcrBox; scale: number; w: number; h: number; px: Uint8Array };
   const items: Item[] = [];
-  for (const b of boxes) {
+  for (const gr of groups) {
+    const b = gr.box;
     const th = b.y1 - b.y0;
-    const pad = Math.max(3, Math.round(th * 0.35));
+    const padX = Math.max(3, Math.round(th * 0.35));
+    const padY = Math.max(2, Math.round(th * 0.25));
     const src = {
-      x0: Math.max(0, b.x0 - pad),
-      y0: Math.max(0, b.y0 - pad),
-      x1: Math.min(W, b.x1 + pad),
-      y1: Math.min(H, b.y1 + pad),
+      x0: Math.max(0, b.x0 - padX),
+      y0: Math.max(0, b.y0 - padY),
+      x1: Math.min(W, b.x1 + padX),
+      y1: Math.min(H, b.y1 + padY),
     };
+    const sw = src.x1 - src.x0;
+    const sh = src.y1 - src.y0;
+    // 行のインクの画素と、そのすぐ周り（文字の縁のぼかし）
+    const mask = new Uint8Array(sw * sh);
+    for (const [y, x0, x1] of gr.runs)
+      for (let y2 = Math.max(src.y0, y - 1); y2 <= Math.min(src.y1 - 1, y + 1); y2++)
+        mask.fill(
+          1,
+          (y2 - src.y0) * sw + Math.max(0, x0 - 1 - src.x0),
+          (y2 - src.y0) * sw + Math.min(sw, x1 + 1 - src.x0),
+        );
     // 行の中の明るさを伸ばす：いちばん暗い所を黒に、白に近い所を白にする
     let lo = 255;
-    for (let y = src.y0; y < src.y1; y++) for (let x = src.x0; x < src.x1; x++) lo = Math.min(lo, data[y * W + x]);
+    for (const [y, x0, x1] of gr.runs) for (let x = x0; x < x1; x++) lo = Math.min(lo, data[y * W + x]);
     const hi = Math.max(lo + 40, 245);
-    for (let y = src.y0; y < src.y1; y++)
-      for (let x = src.x0; x < src.x1; x++) {
-        const i = y * W + x;
+    const px = new Uint8Array(sw * sh).fill(255);
+    for (let y = 0; y < sh; y++)
+      for (let x = 0; x < sw; x++) {
+        if (!mask[y * sw + x]) continue;
+        const i = (y + src.y0) * W + x + src.x0;
         data[i] = Math.max(0, Math.min(255, Math.round(((data[i] - lo) * 255) / (hi - lo))));
+        px[y * sw + x] = data[i];
       }
     const scale = Math.min(MAX_SCALE, Math.max(1, TARGET_H / Math.max(1, th)));
-    items.push({ src, scale, w: Math.ceil((src.x1 - src.x0) * scale), h: Math.ceil((src.y1 - src.y0) * scale) });
+    items.push({ src, scale, w: Math.ceil(sw * scale), h: Math.ceil(sh * scale), px });
   }
   const out: FillCollage[] = [];
   let cur: { strips: FillStrip[]; items: Item[]; width: number; height: number } | null = null;
@@ -217,12 +246,12 @@ export function buildCollages(img: GrayImage, boxes: FillBox[]): FillCollage[] {
     const px = new Uint8Array(width * height).fill(255);
     cur.items.forEach((it, i) => {
       const s = cur!.strips[i];
+      const sw = it.src.x1 - it.src.x0;
+      const sh = it.src.y1 - it.src.y0;
       for (let y = 0; y < it.h; y++) {
-        const sy = Math.min(it.src.y1 - 1, it.src.y0 + Math.floor(y / it.scale));
-        for (let x = 0; x < it.w; x++) {
-          const sx = Math.min(it.src.x1 - 1, it.src.x0 + Math.floor(x / it.scale));
-          px[(s.y + y) * width + s.x + x] = data[sy * W + sx];
-        }
+        const sy = Math.min(sh - 1, Math.floor(y / it.scale));
+        for (let x = 0; x < it.w; x++)
+          px[(s.y + y) * width + s.x + x] = it.px[sy * sw + Math.min(sw - 1, Math.floor(x / it.scale))];
       }
     });
     out.push({ data: px, width, height, strips: cur.strips });
@@ -286,12 +315,28 @@ export function mergeFill(first: OcrLine[], again: OcrLine[]): OcrLine[] {
     .map((l) => ({ words: l.words.filter((w) => !read.some((b) => overlaps(b, w.bbox))) }))
     .filter((l) => l.words.length);
   const addedWords = added.flatMap((l) => l.words);
+  // 置き換えるのは、読み直した単語が1回目の単語の半分以上を覆い、平均の自信が上回り、数字が減らないとき
+  // （かすれた「0.5」を「5」と読み直したときなどに、数字を落とさないように）
+  const digits = (w: OcrWord) => w.symbols.filter((s) => /\d/.test(s.text.normalize("NFKC"))).length;
+  const replaced = (w: OcrWord) => {
+    const area = Math.max(1, (w.bbox.x1 - w.bbox.x0) * (w.bbox.y1 - w.bbox.y0));
+    let cover = 0;
+    let conf = 0;
+    let count = 0;
+    let found = 0;
+    for (const n of addedWords) {
+      const ix = Math.min(n.bbox.x1, w.bbox.x1) - Math.max(n.bbox.x0, w.bbox.x0);
+      const iy = Math.min(n.bbox.y1, w.bbox.y1) - Math.max(n.bbox.y0, w.bbox.y0);
+      if (ix <= 0 || iy <= 0) continue;
+      cover += ix * iy;
+      conf += n.confidence;
+      count++;
+      found += digits(n);
+    }
+    return count > 0 && cover >= area * 0.5 && conf / count > w.confidence && found >= digits(w);
+  };
   const kept = first
-    .map((l) => ({
-      words: l.words.filter(
-        (w) => wasRead(w) || !addedWords.some((n) => n.confidence > w.confidence && overlaps(n.bbox, w.bbox)),
-      ),
-    }))
+    .map((l) => ({ words: l.words.filter((w) => wasRead(w) || !replaced(w)) }))
     .filter((l) => l.words.length);
   return [...kept, ...added];
 }
