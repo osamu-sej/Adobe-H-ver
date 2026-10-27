@@ -46,6 +46,17 @@ describe("数字のかたまり", () => {
   it("数字でない文字では null", () => {
     expect(group(0, 0)).toBeNull();
   });
+  it("数字の直前の符号（▲・＋・－）も数字に含める。英数字のつなぎの「-」は含めない", () => {
+    const signs = buildIndex(fakePage(["差 ▲27 前年 +5.9 と -0.6", "型番 AB-123"]));
+    const at = (line: number, col: number) => {
+      const g = numberGroupAt(signs, signs.lineRanges[line][0] + col);
+      return g ? signs.norm.slice(g[0], g[1]).join("") : null;
+    };
+    expect(at(0, 3)).toBe("▲27");
+    expect(at(0, 10)).toBe("+5.9");
+    expect(at(0, 17)).toBe("-0.6");
+    expect(at(1, 6)).toBe("123");
+  });
   it("単語は同じ字種でまとめる", () => {
     const start = idx.lineRanges[0][0];
     const w = wordAt(idx, start)!;

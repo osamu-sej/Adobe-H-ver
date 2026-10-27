@@ -306,6 +306,9 @@ async function recognizeCloud(job: Job): Promise<PageText> {
   return ocrToPageText(up.lines, up.toPage, up.img);
 }
 
+/** 向きを試すときの画像の解像度。低すぎると表やグラフの小さな文字が読めず、正しい向きでも読めないと判断してしまう */
+const PROBE_DPI = 160;
+
 /**
  * 1ページを認識する。そのままの向きで読めないとき（横向きに貼られた資料など）は、
  * 小さな画像で横向き（90度・270度）、だめなら逆さま（180度）を試し、よく読める向きで読み直す。
@@ -315,7 +318,7 @@ async function recognizePage(worker: OcrWorker, job: Job): Promise<PageText> {
   const { docId, page } = job;
   let best = await read(worker, docId, page, 0, 300, job.blank);
   if (job.mode === "page" && !readsWell(best.score)) {
-    const probe = async (r: number) => ({ r, s: (await read(worker, docId, page, r, 110)).score });
+    const probe = async (r: number) => ({ r, s: (await read(worker, docId, page, r, PROBE_DPI)).score });
     let top = { r: 0, s: best.score };
     for (const r of [90, 270]) {
       const p = await probe(r);

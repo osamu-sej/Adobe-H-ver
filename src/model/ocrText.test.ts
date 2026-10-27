@@ -53,6 +53,26 @@ describe("文字認識の結果を文字層にする", () => {
     expect(t && idx.norm.slice(t[0], t[1]).join("")).toBe("0.0");
   });
 
+  it("1つの単語に読まれても、間の広い数字は隣のセルの数字として分ける。間の「_」（点線の枠）は捨てる", () => {
+    const w = ocrWord([
+      ["1", 100, 108],
+      ["0", 120, 138],
+      ["0", 140, 158],
+      [".", 162, 166],
+      ["9", 170, 188],
+      ["_", 200, 220],
+      ["1", 240, 248],
+      ["0", 260, 278],
+      ["3", 280, 298],
+      [".", 302, 306],
+      ["1", 310, 318],
+    ]);
+    const idx = buildIndex(ocrToPageText([{ words: [w] }], ID));
+    expect(idx.full).not.toContain("_");
+    const hits = snapToRange(idx, { x: 40, y: 40, w: 130, h: 40 }, "digits");
+    expect(hits.map((h) => h.text)).toEqual(["100.9", "103.1"]);
+  });
+
   it("単語の中の細い「1」の後ろに空白を入れない", () => {
     // 「1」は字形が細いので、次の文字との隙間が広く見える
     const symbols = [..."03-1234"].map((c, i) => {
@@ -69,10 +89,10 @@ describe("文字認識の結果を文字層にする", () => {
     expect(idx.full).toBe("TEL 03-1234-5678");
     const m = searchIndex(idx, presetRegex("phone")!);
     expect(m.map((x) => x.text)).toEqual(["03-1234-5678"]);
-    // 座標は画素 → pt（0.5倍）に変換される
+    // 座標は画素 → pt（0.5倍）に変換される。上下は文字の高さの2割ずつ広げて隠す（50 - 15 × 0.2）
     expect(m[0].rects[0].x).toBeLessThan(35);
     expect(m[0].rects[0].x).toBeGreaterThan(28);
-    expect(Math.abs(m[0].rects[0].y - 50)).toBeLessThan(3);
+    expect(Math.abs(m[0].rects[0].y - 47)).toBeLessThan(1);
   });
 
   it("自信のない単語は捨てるが、数字が3つ以上ある単語は隠し漏れを防ぐため残す", () => {
@@ -133,7 +153,14 @@ describe("文字認識の結果を文字層にする", () => {
 /** 白地に、文字のインクの代わりに太さ3の四角い枠を描いた画像。rules は表の縦の罫線（文字より上下に長い） */
 function inkImage(
   blobs: [number, number][],
-  opts: { rules?: number[]; invert?: boolean; dots?: [number, number][]; commas?: [number, number][]; faint?: number[] } = {},
+  opts: {
+    rules?: number[];
+    invert?: boolean;
+    dots?: [number, number][];
+    commas?: [number, number][];
+    faint?: number[];
+    slashes?: [number, number][];
+  } = {},
 ): GrayImage {
   const W = 400;
   const H = 240;
@@ -155,6 +182,12 @@ function inkImage(
   for (const [a, b] of opts.commas ?? []) fill(a, b, 134, 146);
   // 薄い縦線（文字の高さと同じ）
   for (const r of opts.faint ?? []) for (let y = 100; y < 140; y++) data[y * W + r] = 200;
+  // 斜線「/」（右上から左下へのひと筆）
+  for (const [a, b] of opts.slashes ?? [])
+    for (let y = 100; y < 140; y++) {
+      const x = Math.round(b - 3 - ((y - 100) / 39) * (b - a - 3));
+      fill(x, x + 3, y, y + 1);
+    }
   return { data, width: W, height: H };
 }
 
@@ -235,6 +268,82 @@ describe("インクで読み違いを直す", () => {
       ["7", 121, 142],
     ]);
     expect(ocrToPageText([{ words: [pair] }], ID, inkImage([[100, 142]])).chars.join("")).toBe("77");
+  });
+
+  it("「%」を「9%」と読んだとき（「103.7%」が「103.79%」に）は、余分な数字を除く", () => {
+    const digits: [number, number][] = [
+      [100, 108],
+      [115, 135],
+      [140, 160],
+      [172, 192],
+      [198, 236],
+    ];
+    const ink = inkImage(digits, { dots: [[164, 168]] });
+    const sym = (last: [string, number, number][]) =>
+      ocrWord([["1", 100, 108], ["0", 115, 135], ["3", 140, 160], [".", 164, 168], ["7", 172, 192], ...last]);
+    // 「%」が「%」のインクを取ったとき
+    expect(ocrToPageText([{ words: [sym([["9", 198, 206], ["%", 204, 236]])] }], ID, ink).chars.join("")).toBe("103.7%");
+    // 数字の方が「%」のインクを取ったとき
+    expect(ocrToPageText([{ words: [sym([["9", 198, 232], ["%", 233, 236]])] }], ID, ink).chars.join("")).toBe("103.7%");
+  });
+
+  it("小数のすぐ後ろの「%」を「96」と読んだとき（「97.2%」が「97.296」に）は「%」に直す", () => {
+    const w = ocrWord([
+      ["9", 100, 120],
+      ["7", 125, 145],
+      [".", 149, 153],
+      ["2", 157, 177],
+      ["9", 183, 200],
+      ["6", 200, 220],
+    ]);
+    const ink = inkImage(
+      [
+        [100, 120],
+        [125, 145],
+        [157, 177],
+        [183, 221],
+      ],
+      { dots: [[149, 153]] },
+    );
+    expect(ocrToPageText([{ words: [w] }], ID, ink).chars.join("")).toBe("97.2%");
+  });
+
+  it("表の縦の罫線を「1」と読んだもの（「96.1」が「196.1」に）は除く", () => {
+    const w = ocrWord([
+      ["1", 92, 98],
+      ["9", 105, 125],
+      ["6", 130, 150],
+      [".", 154, 158],
+      ["1", 162, 168],
+    ]);
+    const ink = inkImage(
+      [
+        [105, 125],
+        [130, 150],
+        [162, 170],
+      ],
+      { dots: [[154, 158]], rules: [94] },
+    );
+    expect(ocrToPageText([{ words: [w] }], ID, ink).chars.join("")).toBe("96.1");
+  });
+
+  it("日付の「/」を「7」と読んだとき（「10/15」が「10715」に）は、上の横棒がなければ「/」に直す", () => {
+    const w = ocrWord([
+      ["1", 100, 108],
+      ["0", 115, 135],
+      ["7", 140, 156],
+      ["1", 162, 170],
+      ["5", 176, 196],
+    ]);
+    const digits: [number, number][] = [
+      [100, 108],
+      [115, 135],
+      [162, 170],
+      [176, 196],
+    ];
+    expect(ocrToPageText([{ words: [w] }], ID, inkImage(digits, { slashes: [[140, 156]] })).chars.join("")).toBe("10/15");
+    // 上の横棒がある本当の「7」はそのまま
+    expect(ocrToPageText([{ words: [w] }], ID, inkImage([...digits, [140, 156]])).chars.join("")).toBe("10715");
   });
 
   it("表の枠線を「|」と読んだものは「1」にしない（「17.2|」）。数字と同じような縦棒は「1」", () => {
