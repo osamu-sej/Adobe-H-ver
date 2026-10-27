@@ -33,6 +33,12 @@ const WARM_INK_LUM = 170;
 /** オレンジの文字のすぐ隣で、同じ文字の線とみなす色の濃さと明るさ（赤み〜黄色み） */
 const FAINT_INK_SAT = 30;
 const FAINT_INK_LUM = 215;
+/** 黄色の地とみなす色の濃さ・明るさと、まわりの正方形の中の黄色の画素の割合の下限 */
+const YELLOW_SAT = 50;
+const YELLOW_LUM = 190;
+const YELLOW_SHARE = 0.3;
+/** 黄色の地の上の文字の濃さ：赤と緑の暗い方の、白からの暗さのこの割合だけさらに暗くする */
+const YELLOW_GAIN = 0.6;
 /** オレンジのセルを見分ける正方形の半径（300dpi での画素。セルの文字の高さくらい） */
 const CELL_WINDOW = 20;
 const CELL_SHARE = 0.4;
@@ -59,6 +65,42 @@ function warmHue(r: number, g: number, b: number, hi: number, sat: number): bool
   return hue >= 12 && hue <= 75;
 }
 
+/** 黄色（色相 45〜70度）か */
+function yellowHue(r: number, g: number, b: number, hi: number, sat: number): boolean {
+  const hue = hueOf(r, g, b, hi, sat);
+  return hue >= 45 && hue <= 70;
+}
+
+/**
+ * 黄色の地（黄色のセルやマーカー）の上の文字は、赤と緑の暗い方の明るさで濃淡にする。
+ * 黄色の地の上の黒い文字は、地と混じって黄土色のむらになり、色の付いた文字として一部だけ黒くするとまだらになるため。
+ * 黄色の地は赤と緑が明るいので白に近いまま、文字は赤も緑も暗いので濃く残る。この中は色の付いた文字として扱わない
+ */
+function darkenOnYellow(
+  g: Uint8Array,
+  ink: Uint8Array,
+  yellow: Uint8Array,
+  rgb: Uint8Array | Uint8ClampedArray,
+  w: number,
+  h: number,
+  stride: number,
+  k: number,
+) {
+  const r = Math.max(2, Math.round(CELL_WINDOW * k));
+  const share = boxCount(yellow, w, h, r);
+  const need = YELLOW_SHARE * (2 * r + 1) ** 2;
+  for (let y = 0; y < h; y++) {
+    let o = y * stride;
+    for (let x = 0, i = y * w; x < w; x++, i++, o += 3) {
+      if (share[i] < need) continue;
+      // オレンジの文字（赤は明るく、緑だけ暗い）も黒くなるよう、地との差を広げる
+      const v = Math.min(rgb[o], rgb[o + 1]);
+      g[i] = Math.min(g[i], Math.max(0, Math.round(v - (255 - v) * YELLOW_GAIN)));
+      ink[i] = 0;
+    }
+  }
+}
+
 /** 赤からオレンジ・黄色まで（色相 -15〜75度）か。赤みのオレンジの文字は、スキャンの色むらで赤にもオレンジにもなる */
 function redToYellow(r: number, g: number, b: number, hi: number, sat: number): boolean {
   const hue = hueOf(r, g, b, hi, sat);
@@ -82,6 +124,8 @@ export function prepareOcrImage(
   // オレンジのセルの候補（太さで見分ける）と、黒っぽい画素（黒い文字や罫線）
   const warmFill = new Uint8Array(n);
   const black = new Uint8Array(n);
+  // 黄色の地（黄色のセルやマーカー）の画素
+  const yellow = new Uint8Array(n);
   for (let y = 0; y < height; y++) {
     let o = y * stride;
     for (let x = 0, i = y * width; x < width; x++, i++, o += 3) {
@@ -103,10 +147,12 @@ export function prepareOcrImage(
       }
       if (isWarm && sat >= WARM_FILL_SAT && lum < WARM_FILL_LUM) warmFill[i] = 1;
       if (hi < BLACK) black[i] = 1;
+      if (sat >= YELLOW_SAT && lum >= YELLOW_LUM && yellowHue(r, gr, b, hi, sat)) yellow[i] = 1;
     }
   }
   const k = dpi / 300;
   invertDeepCells(g, deep, rgb, width, height, stride, k);
+  darkenOnYellow(g, ink, yellow, rgb, width, height, stride, k);
   darkenColorInk(g, ink, warm, warmFill, black, rgb, width, height, stride, k);
   // 薄い灰色（紙の地や網掛けのセル）を先に白にする。網掛けの中の罫線も、両側が白になって消せる
   whitenPaper(g, width, height, k);

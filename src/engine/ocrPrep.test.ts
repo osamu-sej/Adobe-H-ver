@@ -97,6 +97,18 @@ describe("色の付いた文字・網掛け・詰まった表", () => {
     expect(g[30 * W + 170]).toBe(255);
   });
 
+  it("黄色のセルの上の文字は、地と混じった明るい縁まで濃くし、黄色の地は白くする", () => {
+    const W = 300;
+    const { data, fill } = canvas(W, 140);
+    fill(40, 20, 260, 120, [250, 235, 120]);
+    glyph(fill, 100, 50, [60, 55, 30]);
+    // 文字の縦画の、地と混じった明るい黄土色の部分
+    fill(100, 60, 105, 75, [190, 180, 110]);
+    const g = prepareOcrImage(data, W, 140, W * 3, 300);
+    expect(g[67 * W + 102]).toBeLessThan(170);
+    expect(g[30 * W + 200]).toBe(255);
+  });
+
   it("オレンジのセルの地と、黒い文字との境目のにじみは黒くしない", () => {
     const W = 300;
     const { data, fill } = canvas(W, 160);

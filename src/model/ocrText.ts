@@ -476,13 +476,25 @@ function snapGroup(words: OcrWord[], img: GrayImage, others: OcrBox[]): OcrWord[
   );
   // 同じ数字を二重に読んだ（「71」を「771」など）：インクのない数字の隣に、数字1つ分のインクを取った同じ数字があれば、余分とみなして除く。
   // くっついた2文字（幅が数字1つ分より広い）は除かない
+  // 単語の数字の数だけ数字ほどの幅のインクがあれば、インクのない数字は認識の枠がずれただけ（「53466」の「46」が
+  // くっついて1つのまとまりになり、最後の「6」の枠が前の「6」の枠の中に入っていたなど）なので除かない
+  const enoughInk = (wi: number) => {
+    const b = words[wi].bbox;
+    const ink = segs.filter(
+      (g) => g.x1 - g.x0 >= h * 0.25 && (g.x0 + g.x1) / 2 >= b.x0 - h * 0.2 && (g.x0 + g.x1) / 2 <= b.x1 + h * 0.2,
+    );
+    // くっついた数字（「466」の「46」など）は、数字の幅の何個分かで数える
+    const count = ink.reduce((n, g) => n + Math.max(1, Math.round((g.x1 - g.x0) / digitW)), 0);
+    return count >= order.filter((o, j) => o.wi === wi && isDigitSym[j]).length;
+  };
   const dropped = new Set<number>();
   for (let k = 0; k < m; k++) {
     if (!isDigitSym[k] || assigned[k].length) continue;
     const twin = [k - 1, k + 1].some((nb) => {
       if (nb < 0 || nb >= m || order[nb].wi !== order[k].wi || assigned[nb].length !== 1) return false;
       const width = segs[assigned[nb][0]].x1 - segs[assigned[nb][0]].x0;
-      if (order[nb].s.text === order[k].s.text) return width <= Math.min(digitW * 1.3, h * 0.8);
+      if (order[nb].s.text === order[k].s.text)
+        return width <= Math.min(digitW * 1.3, h * 0.8) && !enoughInk(order[k].wi);
       // 「%」を「9%」と読んだとき：「%」のインクが1文字分しかなければ、数字は「%」の一部を読んだもの
       return order[nb].s.text.normalize("NFKC") === "%" && width <= h * PERCENT_W;
     });
@@ -496,11 +508,13 @@ function snapGroup(words: OcrWord[], img: GrayImage, others: OcrBox[]): OcrWord[
     if (!isDigitSym[k] || assigned[k].length || dropped.has(k)) continue;
     const onRule =
       s.text.normalize("NFKC") === "1" && ruleXs.some((x) => x >= s.bbox.x0 - h * 0.15 && x <= s.bbox.x1 + h * 0.15);
-    const inside = [k - 1, k + 1].some((nb) => {
-      if (nb < 0 || nb >= m || order[nb].wi !== order[k].wi || !assigned[nb].length) return false;
-      const o = order[nb].s.bbox;
-      return Math.min(o.x1, s.bbox.x1) - Math.max(o.x0, s.bbox.x0) >= (s.bbox.x1 - s.bbox.x0) * 0.7;
-    });
+    const inside =
+      !enoughInk(order[k].wi) &&
+      [k - 1, k + 1].some((nb) => {
+        if (nb < 0 || nb >= m || order[nb].wi !== order[k].wi || !assigned[nb].length) return false;
+        const o = order[nb].s.bbox;
+        return Math.min(o.x1, s.bbox.x1) - Math.max(o.x0, s.bbox.x0) >= (s.bbox.x1 - s.bbox.x0) * 0.7;
+      });
     if (onRule || inside) dropped.add(k);
   }
   // 「%」を「9%」と読み、数字の方が「%」のインクを取ったとき（数字にしては幅が広い）も、数字を除いてインクを「%」に戻す
