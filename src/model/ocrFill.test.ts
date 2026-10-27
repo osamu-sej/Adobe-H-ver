@@ -94,4 +94,24 @@ describe("読み残しの読み直し", () => {
     expect(texts(mergeFill(old, [{ words: [word("5", box(222, 20, 236, 50), 90)] }]))).toEqual(["0.5", "5"]);
     expect(texts(mergeFill(old, [{ words: [word("0.6", box(200, 20, 236, 50), 90)] }]))).toEqual(["0.6"]);
   });
+
+  it("数字が減っても、読み直しが1文字ずつインクと対応したなら置き換える（「10/15」を「10/715」と読んでいたとき）", () => {
+    const old: OcrLine[] = [{ words: [{ ...word("10/715", box(200, 20, 300, 50), 40), inkMatched: false }] }];
+    const again = (inkMatched: boolean): OcrLine[] => [{ words: [{ ...word("10/15", box(200, 20, 300, 50), 95), inkMatched }] }];
+    expect(texts(mergeFill(old, again(true)))).toEqual(["10/15"]);
+    // どちらが正しいかわからないときは両方残す（どちらも同じインクを隠すので、隠し漏れがないように）
+    expect(texts(mergeFill(old, again(false)))).toEqual(["10/715", "10/15"]);
+  });
+
+  it("背の高い読めた文字を介して、上下の別の行の読み残しを1行にまとめない", () => {
+    const tall = image(200, 120, [
+      { x: 20, y: 20, w: 16, h: 70, v: 0 },
+      { x: 55, y: 5, w: 16, h: 30, v: 0 },
+      { x: 55, y: 75, w: 16, h: 30, v: 0 },
+    ]);
+    const read: OcrLine[] = [{ words: [word("1", box(20, 20, 36, 90))] }];
+    const groups = unreadGroups(tall, read);
+    expect(groups.length).toBe(2);
+    expect(groups.some((g) => g.box.y0 === 75 && g.box.y1 === 105)).toBe(true);
+  });
 });

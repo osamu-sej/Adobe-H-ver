@@ -130,8 +130,10 @@ export function unreadGroups(img: GrayImage, lines: OcrLine[], dpi = 300): FillG
   );
   const order = comps.map((_, i) => i);
   order.sort((a, b) => comps[a].x0 - comps[b].x0);
-  // 同じ高さに並び、間の狭いまとまりを1行にまとめる（小数点のような小さな点も、隣の文字と同じ行に入れる）
+  // 同じ高さに並び、間の狭いまとまりを1行にまとめる（小数点のような小さな点も、隣の文字と同じ行に入れる）。
+  // まとめた行が高くなりすぎるつなぎはしない（背の高い文字を介して、上下の別の行がつながらないように）
   const parent = new Map<number, number>(order.map((i) => [i, i]));
+  const span = new Map<number, [number, number]>(order.map((i) => [i, [comps[i].y0, comps[i].y1]]));
   const find = (a: number): number => {
     while (parent.get(a) !== a) a = parent.get(a)!;
     return a;
@@ -149,7 +151,15 @@ export function unreadGroups(img: GrayImage, lines: OcrLine[], dpi = 300): FillG
       }
       const overlap = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
       // 縦に重なる（点や記号は、大きい方の文字の高さの中にある）
-      if (overlap >= Math.min(ha, hb) * 0.5) parent.set(find(order[q]), find(order[p]));
+      if (overlap < Math.min(ha, hb) * 0.5) continue;
+      const ra = find(order[p]);
+      const rb = find(order[q]);
+      if (ra === rb) continue;
+      const [a0, a1] = span.get(ra)!;
+      const [b0, b1] = span.get(rb)!;
+      if (Math.max(a1, b1) - Math.min(a0, b0) > maxH) continue;
+      parent.set(rb, ra);
+      span.set(ra, [Math.min(a0, b0), Math.max(a1, b1)]);
     }
   }
   const groups = new Map<number, { members: number[]; box: OcrBox; seed: boolean }>();
@@ -346,7 +356,8 @@ export function mergeFill(first: OcrLine[], again: OcrLine[]): OcrLine[] {
   const added = again.map((l) => ({ words: l.words.flatMap(outside) })).filter((l) => l.words.length);
   const addedWords = added.flatMap((l) => l.words);
   // 置き換えるのは、読み直した単語が1回目の単語の半分以上を覆い、平均の自信が上回り、数字が減らないとき
-  // （かすれた「0.5」を「5」と読み直したときなどに、数字を落とさないように）
+  // （かすれた「0.5」を「5」と読み直したときなどに、数字を落とさないように）。
+  // 数字が減っても、読み直した単語が1文字ずつインクと対応したなら置き換える（「10/15」を「10/715」と読んでいたときなど）
   const digits = (w: OcrWord) => w.symbols.filter((s) => /\d/.test(s.text.normalize("NFKC"))).length;
   const replaced = (w: OcrWord) => {
     const area = Math.max(1, (w.bbox.x1 - w.bbox.x0) * (w.bbox.y1 - w.bbox.y0));
@@ -354,6 +365,7 @@ export function mergeFill(first: OcrLine[], again: OcrLine[]): OcrLine[] {
     let conf = 0;
     let count = 0;
     let found = 0;
+    let matched = true;
     for (const n of addedWords) {
       const ix = Math.min(n.bbox.x1, w.bbox.x1) - Math.max(n.bbox.x0, w.bbox.x0);
       const iy = Math.min(n.bbox.y1, w.bbox.y1) - Math.max(n.bbox.y0, w.bbox.y0);
@@ -362,9 +374,12 @@ export function mergeFill(first: OcrLine[], again: OcrLine[]): OcrLine[] {
       conf += n.confidence;
       count++;
       found += digits(n);
+      matched &&= n.inkMatched === true;
     }
-    return count > 0 && cover >= area * 0.5 && conf / count > w.confidence && found >= digits(w);
+    return count > 0 && cover >= area * 0.5 && conf / count > w.confidence && (found >= digits(w) || matched);
   };
+  // 置き換えないときは、1回目と読み直しの両方を残す。どちらが正しいかわからず、どちらも同じインクの所なので
+  // （片方だけにすると、正しい方を捨てて隠し漏れや検索漏れになることがある）
   const kept = first
     .map((l) => ({ words: l.words.filter((w) => wasRead(w) || !replaced(w)) }))
     .filter((l) => l.words.length);

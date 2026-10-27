@@ -308,8 +308,11 @@ const MAX_FILL = 1000;
 async function fillUnread(worker: OcrWorker, r: Reading): Promise<OcrLine[]> {
   const dpi = 72 / (Math.sqrt(Math.abs(r.toPage[0] * r.toPage[3] - r.toPage[1] * r.toPage[2])) || 1);
   // 数字の単語は、1文字ずつインクが対応したものだけを読めたとみなす（対応しないものは読み直して、よく読めたほうを使う）
-  const marked = snapToInk(r.lines, r.image);
-  const first = r.lines.map((l, i) => ({ words: l.words.map((w, j) => ({ ...w, inkMatched: marked[i].words[j].inkMatched ?? false })) }));
+  const withInk = (lines: OcrLine[]) => {
+    const marked = snapToInk(lines, r.image);
+    return lines.map((l, i) => ({ words: l.words.map((w, j) => ({ ...w, inkMatched: marked[i].words[j].inkMatched ?? false })) }));
+  };
+  const first = withInk(r.lines);
   const groups = unreadGroups(r.image, first, dpi);
   if (!groups.length || groups.length > MAX_FILL) return r.lines;
   // 切り出した行を縦に並べた画像を、1回目と同じく1つのかたまりの文章として読む
@@ -318,7 +321,7 @@ async function fillUnread(worker: OcrWorker, r: Reading): Promise<OcrLine[]> {
     const png = await engine.grayPng(c.data, c.width, c.height);
     again.push(...fromCollage(await recognizeLines(worker, png), c));
   }
-  return mergeFill(first, again);
+  return mergeFill(first, withInk(again));
 }
 
 const ratio = (s: Reading["score"]) => s.good / Math.max(1, s.total);
