@@ -77,6 +77,68 @@ describe("文字認識の前に画像を整える", () => {
   });
 });
 
+describe("色の付いた文字・網掛け・詰まった表", () => {
+  /** 「1」のような縦画と、上下の横画でできた数字ほどの字（線の太さ5） */
+  const glyph = (fill: ReturnType<typeof canvas>["fill"], x: number, y: number, color: [number, number, number]) => {
+    fill(x, y, x + 5, y + 36, color);
+    fill(x, y, x + 20, y + 5, color);
+    fill(x, y + 31, x + 20, y + 36, color);
+  };
+
+  it("明るめのオレンジの文字は、白地でも黄色の地でも黒くする。黄色の地は白くなる", () => {
+    const W = 300;
+    const { data, fill } = canvas(W, 120);
+    glyph(fill, 20, 40, [200, 120, 90]);
+    fill(150, 20, 290, 100, [240, 220, 120]);
+    glyph(fill, 200, 40, [205, 125, 70]);
+    const g = prepareOcrImage(data, W, 120, W * 3, 300);
+    expect(g[60 * W + 22]).toBeLessThan(100);
+    expect(g[60 * W + 202]).toBeLessThan(100);
+    expect(g[30 * W + 170]).toBe(255);
+  });
+
+  it("オレンジのセルの地と、黒い文字との境目のにじみは黒くしない", () => {
+    const W = 300;
+    const { data, fill } = canvas(W, 160);
+    fill(40, 30, 240, 130, [215, 150, 100]);
+    glyph(fill, 100, 60, [30, 30, 30]);
+    // 文字の下のにじみ（オレンジより少し暗い茶色）
+    fill(100, 96, 120, 99, [190, 125, 80]);
+    const g = prepareOcrImage(data, W, 160, W * 3, 300);
+    expect(g[50 * W + 60]).toBe(255);
+    expect(g[97 * W + 110]).toBeGreaterThan(200);
+    expect(g[70 * W + 102]).toBeLessThan(80);
+  });
+
+  it("灰色の網掛けのセルは白くし、網掛けの中の罫線も消す。黒い文字は残る", () => {
+    const W = 400;
+    const H = 300;
+    const { data, fill } = canvas(W, H);
+    fill(20, 20, 380, 280, [190, 190, 190]);
+    // 網掛けの中の縦の罫線（地より少し暗い）
+    fill(200, 20, 203, 280, [150, 150, 150]);
+    glyph(fill, 100, 120, [40, 40, 40]);
+    const g = prepareOcrImage(data, W, H, W * 3, 300);
+    expect(g[60 * W + 60]).toBe(255);
+    for (const y of [40, 150, 260]) expect(g[y * W + 201]).toBe(255);
+    expect(g[140 * W + 102]).toBeLessThan(80);
+  });
+
+  it("行の詰まった表で、数字の下端に接している横の罫線も、数字の下まで消す", () => {
+    const W = 400;
+    const { data, fill } = canvas(W, 200);
+    fill(0, 100, W, 103, [60, 60, 60]);
+    // 罫線の上に接した数字（下の方が太く、罫線の太さの倍より上まで黒い）
+    glyph(fill, 150, 64, [30, 30, 30]);
+    fill(150, 88, 170, 100, [30, 30, 30]);
+    const g = prepareOcrImage(data, W, 200, W * 3, 300);
+    // 数字の下（罫線のあった所）は白く、数字の縦画は残る
+    expect(g[101 * W + 165]).toBe(255);
+    expect(g[101 * W + 50]).toBe(255);
+    expect(g[80 * W + 152]).toBeLessThan(80);
+  });
+});
+
 describe("PDFの文字がある所を白く消す", () => {
   it("ページの座標の矩形を画素に直して、少し広めに白く塗る", () => {
     const { data, fill } = canvas(100, 100);

@@ -51,13 +51,15 @@ const MIN_WORD_CONFIDENCE = 30;
 const KEEP_DIGITS = 3;
 /** 単語の間の隙間が文字の高さに対してこれより広ければ、別のかたまり（表の別のセルなど）とみなす */
 const CHUNK_GAP = 0.8;
+/** 数字と数字の間がこれより広ければ（単語の中でも）、別のセルの数字とみなす。1つの数字の中の隙間はずっと狭い */
+const NUMBER_CELL_GAP = 0.45;
 /** 単語の中でも、これより広い隙間があれば別のかたまりにする（セル同士が1語に読まれたとき） */
 const CHUNK_GAP_IN_WORD = 1.2;
 /** 単語の間の隙間がこれより広ければ空白を入れる。単語の中には入れない（「1」は細いので隙間が広く見える） */
 const SPACE_GAP = 0.25;
 const NUMBER_SPACE_GAP = 0.6;
-/** 文字の高さに対する上下の余白 */
-const INK_PAD = 0.12;
+/** 文字の高さに対する上下の余白（数字のインクは、文字の枠の高さの7割ほど。PDFの文字の枠と同じくらいに隠す） */
+const INK_PAD = 0.2;
 /** 数字のかたまりの両端に足す余白（端の数字の一部を読み落としても隠れるように） */
 const RUN_PAD = 0.2;
 
@@ -69,6 +71,10 @@ const LIKE_ZERO = new Set(["O", "o", "〇", "○", "Ｏ", "ｏ"]);
 const TALL_BAR = 1.4;
 /** 数字の線の太さのこの割合より細い（薄い）縦棒も、表の枠線とみなす */
 const THIN_BAR = 0.6;
+/** 「%」1文字の幅の上限（文字の高さに対して）。これより広ければ、数字と「%」がくっついたもの */
+const PERCENT_W = 1.6;
+/** 「7」の上の横棒は字の幅のこの割合より広い。これより狭ければ斜めのひと筆の「/」 */
+const SLASH_TOP = 0.6;
 /** 数字に挟まれているときは「-」の読み違いとみなす文字（漢数字の「一」など） */
 const LIKE_DASH = new Set(["一", "ー", "—", "–", "―", "－", "‐", "~", "〜", "_"]);
 
@@ -313,8 +319,12 @@ function snapGroup(words: OcrWord[], img: GrayImage, others: OcrBox[]): OcrWord[
       .filter(({ s }) => s.text.trim() && (s.bbox.x1 - s.bbox.x0 >= h * 0.06 || digit(s.text.normalize("NFKC")))),
   );
   if (!order.length) return words;
-  // 罫線のかけらなど、細すぎるインクは文字ではない
-  const all = (inkSegments(img, x0 - h * 1.2, x1 + h * 1.2, y0, y1) ?? []).filter((g) => g.x1 - g.x0 >= h * 0.06);
+  // 罫線のかけらなど、細すぎるインクは文字ではない。
+  // インクは文字の行の高さの範囲だけで見る（単語の枠が、点線の枠の消え残りの点などまで上下に広がっていることがある）
+  const by0 = rows && rows.y1 - rows.y0 >= 4 ? Math.max(y0, rows.y0 - h * 0.1) : y0;
+  const by1 = rows && rows.y1 - rows.y0 >= 4 ? Math.min(y1, rows.y1 + h * 0.1) : y1;
+  const ruleXs: number[] = [];
+  const all = (inkSegments(img, x0 - h * 1.2, x1 + h * 1.2, by0, by1, ruleXs) ?? []).filter((g) => g.x1 - g.x0 >= h * 0.06);
   const core = all.map((g, i) => (words.some((w) => g.x1 > w.bbox.x0 && g.x0 < w.bbox.x1) ? i : -1)).filter((i) => i >= 0);
   if (!core.length) return words;
   // 単語の枠が文字の途中で終わっていることがあるので、枠の外でも続いているインク（間が狭く、
@@ -432,16 +442,59 @@ function snapGroup(words: OcrWord[], img: GrayImage, others: OcrBox[]): OcrWord[
   const dropped = new Set<number>();
   for (let k = 0; k < m; k++) {
     if (!isDigitSym[k] || assigned[k].length) continue;
-    const twin = [k - 1, k + 1].some(
-      (nb) =>
-        nb >= 0 &&
-        nb < m &&
-        order[nb].wi === order[k].wi &&
-        order[nb].s.text === order[k].s.text &&
-        assigned[nb].length === 1 &&
-        segs[assigned[nb][0]].x1 - segs[assigned[nb][0]].x0 <= Math.min(digitW * 1.3, h * 0.8),
-    );
+    const twin = [k - 1, k + 1].some((nb) => {
+      if (nb < 0 || nb >= m || order[nb].wi !== order[k].wi || assigned[nb].length !== 1) return false;
+      const width = segs[assigned[nb][0]].x1 - segs[assigned[nb][0]].x0;
+      if (order[nb].s.text === order[k].s.text) return width <= Math.min(digitW * 1.3, h * 0.8);
+      // 「%」を「9%」と読んだとき：「%」のインクが1文字分しかなければ、数字は「%」の一部を読んだもの
+      return order[nb].s.text.normalize("NFKC") === "%" && width <= h * PERCENT_W;
+    });
     if (twin) dropped.add(k);
+  }
+  // 表の縦の罫線を「1」と読んだもの（「96.1」が「196.1」に）：インクのない「1」が罫線の位置にあれば除く。
+  // 点線の罫線は罫線として見つからないので、インクのない数字の認識の枠がほとんど隣の文字の枠の中にあるもの
+  // （同じインクを2文字に読んだ）も除く
+  for (let k = 0; k < m; k++) {
+    const s = order[k].s;
+    if (!isDigitSym[k] || assigned[k].length || dropped.has(k)) continue;
+    const onRule = s.text.normalize("NFKC") === "1" && ruleXs.some((x) => x >= s.bbox.x0 - h * 0.15 && x <= s.bbox.x1 + h * 0.15);
+    const inside = [k - 1, k + 1].some((nb) => {
+      if (nb < 0 || nb >= m || order[nb].wi !== order[k].wi || !assigned[nb].length) return false;
+      const o = order[nb].s.bbox;
+      return Math.min(o.x1, s.bbox.x1) - Math.max(o.x0, s.bbox.x0) >= (s.bbox.x1 - s.bbox.x0) * 0.7;
+    });
+    if (onRule || inside) dropped.add(k);
+  }
+  // 「%」を「9%」と読み、数字の方が「%」のインクを取ったとき（数字にしては幅が広い）も、数字を除いてインクを「%」に戻す
+  for (let k = 0; k + 1 < m; k++) {
+    const nb = k + 1;
+    if (!isDigitSym[k] || assigned[k].length !== 1 || assigned[nb].length || order[nb].wi !== order[k].wi) continue;
+    if (order[nb].s.text.normalize("NFKC") !== "%") continue;
+    const width = segs[assigned[k][0]].x1 - segs[assigned[k][0]].x0;
+    if (width <= digitW * 1.3 || width > h * PERCENT_W) continue;
+    assigned[nb] = assigned[k];
+    assigned[k] = [];
+    dropped.add(k);
+  }
+  // 「%」を「96」や「9」と読んだとき（「97.2%」が「97.296」に）：小数のすぐ後ろで、数字にしては幅が広い
+  // （「%」くらいの）インク1つを数字1〜2文字が取り合っていれば、それは「%」
+  const rename = new Map<number, string>();
+  for (let k = 0; k < m; k++) {
+    if (!isDigitSym[k] || assigned[k].length !== 1 || dropped.has(k)) continue;
+    const width = segs[assigned[k][0]].x1 - segs[assigned[k][0]].x0;
+    if (width <= digitW * 1.35 || width > h * PERCENT_W) continue;
+    const twin = [k - 1, k + 1].find(
+      (nb) => nb >= 0 && nb < m && isDigitSym[nb] && !assigned[nb].length && !dropped.has(nb) && order[nb].wi === order[k].wi,
+    );
+    const start = twin === undefined ? k : Math.min(twin, k);
+    if (start < 2 || !isDigitSym[start - 1] || order[start - 2].s.text.normalize("NFKC") !== ".") continue;
+    rename.set(k, "%");
+    if (twin !== undefined) dropped.add(twin);
+  }
+  // 日付の「/」を「7」と読んだとき（「10/15」が「10715」に）：数字に挟まれた「7」が、上の横棒のない斜めのひと筆なら「/」
+  for (let k = 1; k + 1 < m; k++) {
+    if (order[k].s.text.normalize("NFKC") !== "7" || assigned[k].length !== 1 || dropped.has(k) || rename.has(k)) continue;
+    if (isDigitSym[k - 1] && isDigitSym[k + 1] && slashShaped(img, segs[assigned[k][0]], by0, by1)) rename.set(k, "/");
   }
   const ranges: (Segment | null)[] = assigned.map((a, k) => {
     if (!a.length) return null;
@@ -481,7 +534,7 @@ function snapGroup(words: OcrWord[], img: GrayImage, others: OcrBox[]): OcrWord[
     if (!within && Math.abs((r.x0 + r.x1) / 2 - symC[k]) > h * 1.2) return;
     const w = words[wi].bbox;
     const v = inkRows(img, r.x0, r.x1, w.y0, w.y1);
-    out[wi].symbols[si] = { ...s, bbox: { x0: r.x0, x1: r.x1, y0: v ? v.y0 : w.y0, y1: v ? v.y1 : w.y1 } };
+    out[wi].symbols[si] = { ...s, text: rename.get(k) ?? s.text, bbox: { x0: r.x0, x1: r.x1, y0: v ? v.y0 : w.y0, y1: v ? v.y1 : w.y1 } };
   });
   // 二重に読んだ数字を除き、読み落とした小数点・カンマを数字の間に入れる
   if (dropped.size || dots.length) {
@@ -510,6 +563,39 @@ function snapGroup(words: OcrWord[], img: GrayImage, others: OcrBox[]): OcrWord[
 }
 
 /**
+ * 「7」と読んだ字が、上の横棒のない斜めのひと筆（「/」）か。
+ * 字のいちばん上の方の行で、インクの左右の広がりが字の幅に比べて狭ければ「/」（「7」は上の横棒が字の幅いっぱいにある）
+ */
+function slashShaped(img: GrayImage, g: Segment, y0: number, y1: number): boolean {
+  const { data, width: W, height: H } = img;
+  const x0 = Math.max(0, Math.floor(g.x0));
+  const x1 = Math.min(W, Math.ceil(g.x1));
+  y0 = Math.max(0, Math.floor(y0));
+  y1 = Math.min(H, Math.ceil(y1));
+  if (x1 - x0 < 3 || y1 - y0 < 6) return false;
+  const hist = new Uint32Array(256);
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) hist[data[y * W + x]]++;
+  const total = (x1 - x0) * (y1 - y0);
+  const t = otsu(hist, total);
+  const light = inverted(hist, t, total);
+  // インクのある行ごとの、インクの左端から右端までの幅
+  const spans: number[] = [];
+  for (let y = y0; y < y1; y++) {
+    let a = -1;
+    let b = -1;
+    for (let x = x0; x < x1; x++)
+      if (data[y * W + x] <= t !== light) {
+        if (a < 0) a = x;
+        b = x;
+      }
+    if (a >= 0) spans.push(b - a + 1);
+  }
+  if (spans.length < 6) return false;
+  const top = spans.slice(0, Math.max(2, Math.round(spans.length * 0.15)));
+  return Math.max(...top) < (x1 - x0) * SLASH_TOP;
+}
+
+/**
  * 読み落とした小数点・カンマ（「7.7」を「77」と読んだときの「.」など）を、インクから見つける。
  * 数字に割り当てた2つ目以降のまとまりのうち、隣の数字の側の端にある、文字の下の方の小さな点を取り出す
  * （assigned から除く）。数字の下端より下へ伸びていればカンマとする
@@ -533,20 +619,36 @@ function findMissedDots(
   });
   if (!bottoms.length) return out;
   const base = median(bottoms);
+  // 小さく、下の方にある点か（「1」のように縦に長いもの、「-」のように中ほどのものは除く）。点なら「.」、下へ伸びていれば「,」
+  const dotAt = (g: Segment): OcrSymbol | null => {
+    if (g.x1 - g.x0 > h * 0.35) return null;
+    const r = inkRows(img, g.x0, g.x1, y0, y1 + h * 0.25);
+    if (!r || r.y1 - r.y0 > h * 0.4 || r.y0 < base - h * 0.35 || r.y1 < base - h * 0.15) return null;
+    return { text: r.y1 > base + h * 0.1 ? "," : ".", confidence: 90, bbox: { x0: g.x0, x1: g.x1, y0: r.y0, y1: r.y1 } };
+  };
   for (let k = 0; k < assigned.length; k++) {
     const a = assigned[k];
-    if (!isDigitSym[k] || a.length < 2) continue;
+    if (!isDigitSym[k]) continue;
+    // 小数点の上に数字を読み、その前の数字が2文字分のインクを取ったとき（「20.7」を「207」と読み、「0」の位置が点にずれた）：
+    // 前の数字の2つ目のインクをこの数字に回し、点を小数点にする
+    if (a.length === 1 && k > 0 && isDigitSym[k - 1] && assigned[k - 1].length >= 2) {
+      const prev = assigned[k - 1];
+      const moved = segs[prev[prev.length - 1]];
+      const dot = moved.x1 - moved.x0 >= h * 0.25 ? dotAt(segs[a[0]]) : null;
+      if (dot) {
+        assigned[k] = [prev.pop()!];
+        out.push({ k, after: true, symbol: dot });
+        continue;
+      }
+    }
+    if (a.length < 2) continue;
     for (const side of [-1, 1]) {
       const nb = k + side;
       if (nb < 0 || nb >= assigned.length || !isDigitSym[nb]) continue;
-      const g = segs[side < 0 ? a[0] : a[a.length - 1]];
-      if (g.x1 - g.x0 > h * 0.35) continue;
-      const r = inkRows(img, g.x0, g.x1, y0, y1 + h * 0.25);
-      // 小さく、下の方にある（「1」のように縦に長いもの、「-」のように中ほどのものは除く）
-      if (!r || r.y1 - r.y0 > h * 0.4 || r.y0 < base - h * 0.35 || r.y1 < base - h * 0.15) continue;
+      const dot = dotAt(segs[side < 0 ? a[0] : a[a.length - 1]]);
+      if (!dot) continue;
       a.splice(side < 0 ? 0 : a.length - 1, 1);
-      const text = r.y1 > base + h * 0.1 ? "," : ".";
-      out.push({ k, after: side > 0, symbol: { text, confidence: 90, bbox: { x0: g.x0, x1: g.x1, y0: r.y0, y1: r.y1 } } });
+      out.push({ k, after: side > 0, symbol: dot });
       break;
     }
   }
@@ -744,7 +846,16 @@ export function ocrToPageText(lines: OcrLine[], toPage: Matrix6, img?: GrayImage
     words.sort((a, b) => a[0].x0 - b[0].x0);
     // 行の中の文字を並べ、単語の切れ目を覚えておく
     const seq: { g: Glyph; text: string; first: boolean }[] = [];
-    for (const glyphs of words) {
+    for (const all of words) {
+      // 「_」は表の点線の枠の切れ端を読んだもの。単語の端にあるもの、離れた数字の間（隣のセルとの境目）にあるものは捨てる。
+      // 数字のすぐ間にあるものは「-」の読み違いなので残す（あとで「-」に直す）
+      const glyphs = all.filter((g, i) => {
+        if (!/^[_＿]$/.test(g.text)) return true;
+        const p = all[i - 1];
+        const n = all[i + 1];
+        return !!p && !!n && n.x0 - p.x1 <= g.em * NUMBER_CELL_GAP;
+      });
+      if (!glyphs.length) continue;
       const fixed = fixConfusables(glyphs.map((g) => g.text));
       glyphs.forEach((g, i) => seq.push({ g, text: fixed[i], first: i === 0 }));
     }
@@ -758,7 +869,9 @@ export function ocrToPageText(lines: OcrLine[], toPage: Matrix6, img?: GrayImage
       const inNumber = prev && ((numeric(prev.text) && digit(text)) || (digit(prev.text) && numeric(text)));
       // 日本語の文字の隣（「4月 1日」「〒 102」など）も、狭い隙間には空白を入れない（検索で見つかるように）
       const japanese = prev && (CJK.test(prev.text) || CJK.test(text));
-      if (!prev || gap > hh * (first ? CHUNK_GAP : CHUNK_GAP_IN_WORD)) line++;
+      // 1つの単語に読まれていても、数字の間が広く空いていれば隣のセルの数字（「100.9」と「103.1」など）
+      const cellGap = !first && inNumber && gap > hh * NUMBER_CELL_GAP;
+      if (!prev || gap > hh * (first ? CHUNK_GAP : CHUNK_GAP_IN_WORD) || cellGap) line++;
       else if (first && gap > hh * (inNumber || japanese ? NUMBER_SPACE_GAP : SPACE_GAP))
         push(" ", prev.g.x1, Math.min(prev.g.y0, g.y0), g.x0, Math.max(prev.g.y1, g.y1), hh);
       // 数字は前後の文字との隙間まで広げる。読み落とした数字（「10%」の「1」など）も隠れるように。

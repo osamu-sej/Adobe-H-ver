@@ -148,8 +148,17 @@ export function numberGroupAt(idx: TextIndex, i: number): [number, number] | nul
     if (k < le && isDigitChar(idx, k) && (k === e + 1 || canBridge(e, k))) e = k;
     else break;
   }
+  // 数字の直前の符号（「+59」「-0.6」「▲0.1」）も数字に含める。増えたか減ったかも数字の一部の情報なので、一緒に隠す。
+  // 英字・数字の直後（「ABC-123」の「-」など）はつなぎの記号なので含めない
+  if (s - 1 >= ls && SIGNS.has(idx.norm[s - 1]) && (s - 2 < ls || !/[0-9A-Za-z]/.test(idx.norm[s - 2]))) {
+    const em = Math.max(t.sizes[s - 1], t.sizes[s], 1);
+    if (t.boxes[s * 4] - t.boxes[(s - 1) * 4 + 2] < em * 0.5) s--;
+  }
   return [s, e + 1];
 }
+
+/** 数字の直前にあれば数字の一部とみなす符号 */
+const SIGNS = new Set(["+", "-", "−", "‐", "–", "±", "▲", "△", "▼", "▽"]);
 
 type CharClass = "digit" | "latin" | "kanji" | "kana" | "other";
 
