@@ -14,6 +14,8 @@ const MIN_H = 10;
 const MAX_H = 90;
 /** 1文字のまとまりの幅の上限（高さに対して）。これより横に長いものは線や図 */
 const MAX_ASPECT = 4;
+/** 横に細長くても、これより短いもの（「-」「−」などの記号）は文字に含める（300dpi での画素） */
+const MAX_DASH = 30;
 /** 同じ行の文字とみなす、まとまりの間の隙間（高さに対して） */
 const JOIN_GAP = 0.8;
 /** 読み直す画像での文字の高さの目安（画素）。小さい文字は拡大する */
@@ -119,7 +121,7 @@ export function unreadGroups(img: GrayImage, lines: OcrLine[], dpi = 300): FillG
   const comps = all.filter((c) => {
     const h = c.y1 - c.y0;
     const w = c.x1 - c.x0;
-    return h <= maxH && w <= maxH * MAX_ASPECT && w <= h * MAX_ASPECT + 2 * k;
+    return h <= maxH && w <= maxH * MAX_ASPECT && (w <= h * MAX_ASPECT + 2 * k || w <= MAX_DASH * k);
   });
   // 読めた単語の中や縁にあるか
   const covered = comps.map((c) =>

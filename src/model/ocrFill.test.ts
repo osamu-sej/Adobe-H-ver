@@ -103,6 +103,18 @@ describe("読み残しの読み直し", () => {
     expect(texts(mergeFill(old, again(false)))).toEqual(["10/715", "10/15"]);
   });
 
+  it("数字の間の細い「-」も、読み直す行の画像に写す", () => {
+    const dash = image(200, 80, [
+      { x: 20, y: 20, w: 16, h: 30, v: 0 },
+      { x: 40, y: 34, w: 16, h: 2, v: 0 },
+      { x: 60, y: 20, w: 16, h: 30, v: 0 },
+    ]);
+    const [c] = buildCollages(dash, unreadGroups(dash, []));
+    const s = c.strips[0];
+    expect(c.strips.length).toBe(1);
+    expect(c.data[(s.y + Math.round((35 - s.src.y0) * s.scale)) * c.width + s.x + Math.round((48 - s.src.x0) * s.scale)]).toBeLessThan(20);
+  });
+
   it("背の高い読めた文字を介して、上下の別の行の読み残しを1行にまとめない", () => {
     const tall = image(200, 120, [
       { x: 20, y: 20, w: 16, h: 70, v: 0 },
