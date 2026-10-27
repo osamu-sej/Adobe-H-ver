@@ -1,6 +1,7 @@
 import type { Worker as OcrWorker } from "tesseract.js";
 import { engine } from "../engine/client";
 import { annotate, CloudOcrError, readingTurn, uprightReading, visionToLines } from "./cloudOcr";
+import { buildCollages, fromCollage, mergeFill, unreadBoxes } from "./ocrFill";
 import { OCR_PARAMS, ocrToPageText, orientationScore, readsWell, type GrayImage, type Matrix6, type OcrLine } from "./ocrText";
 import type { OcrMode } from "./pageText";
 import { toast, useStore } from "./store";
@@ -275,9 +276,9 @@ interface Reading {
   score: { good: number; total: number };
 }
 
-async function read(worker: OcrWorker, docId: string, page: number, rotate: number, dpi: number, blank?: number[]): Promise<Reading> {
-  const img = await engine.ocrImage(docId, page, rotate, dpi, 7, false, blank);
-  const { data } = await worker.recognize(new Blob([img.png as BlobPart], { type: "image/png" }), {}, { blocks: true, text: false });
+/** PNG の画像を読み、行ごとの単語にする */
+async function recognizeLines(worker: OcrWorker, png: Uint8Array): Promise<OcrLine[]> {
+  const { data } = await worker.recognize(new Blob([png as BlobPart], { type: "image/png" }), {}, { blocks: true, text: false });
   const lines: OcrLine[] = [];
   for (const b of data.blocks ?? [])
     for (const p of b.paragraphs)
@@ -289,7 +290,32 @@ async function read(worker: OcrWorker, docId: string, page: number, rotate: numb
             symbols: w.symbols.map((s) => ({ text: s.text, confidence: s.confidence, bbox: s.bbox })),
           })),
         });
+  return lines;
+}
+
+async function read(worker: OcrWorker, docId: string, page: number, rotate: number, dpi: number, blank?: number[]): Promise<Reading> {
+  const img = await engine.ocrImage(docId, page, rotate, dpi, 7, false, blank);
+  const lines = await recognizeLines(worker, img.png);
   return { lines, toPage: img.toPage, image: { data: img.gray, width: img.width, height: img.height }, score: orientationScore(lines) };
+}
+
+/** 1ページで読み直す行の数の上限（写真の模様などで多くなりすぎたときに時間がかからないように） */
+const MAX_FILL = 400;
+
+/**
+ * 1回目に読み残した所（薄い灰色の文字、網掛けのセルの数字、ぽつんとある数字など）を切り出して読み直し、結果に足す
+ */
+async function fillUnread(worker: OcrWorker, r: Reading): Promise<OcrLine[]> {
+  const dpi = 72 / (Math.sqrt(Math.abs(r.toPage[0] * r.toPage[3] - r.toPage[1] * r.toPage[2])) || 1);
+  const boxes = unreadBoxes(r.image, r.lines, dpi);
+  if (!boxes.length || boxes.length > MAX_FILL) return r.lines;
+  // 切り出した行を縦に並べた画像を、1回目と同じく1つのかたまりの文章として読む
+  const again: OcrLine[] = [];
+  for (const c of buildCollages(r.image, boxes)) {
+    const png = await engine.grayPng(c.data, c.width, c.height);
+    again.push(...fromCollage(await recognizeLines(worker, png), c));
+  }
+  return mergeFill(r.lines, again);
 }
 
 const ratio = (s: Reading["score"]) => s.good / Math.max(1, s.total);
@@ -333,5 +359,5 @@ async function recognizePage(worker: OcrWorker, job: Job): Promise<PageText> {
       if (turned.score.good > best.score.good) best = turned;
     }
   }
-  return ocrToPageText(best.lines, best.toPage, best.image);
+  return ocrToPageText(await fillUnread(worker, best), best.toPage, best.image);
 }

@@ -119,6 +119,11 @@ async function handle(req: WorkerRequest & { id: number }) {
       post({ type: "result", id: req.id, ok: true, value: r }, transfer);
       return;
     }
+    case "grayPng": {
+      const png = grayPng(req.data, req.width, req.height);
+      post({ type: "result", id: req.id, ok: true, value: png }, [png.buffer as ArrayBuffer]);
+      return;
+    }
     case "close": {
       const d = docs.get(req.docId);
       if (d) {
@@ -261,6 +266,17 @@ function ocrImage(docId: string, page: number, rotate: number, dpi: number, with
   return { png, gray, width: w, height: h, toPage, jpeg };
 }
 
+function grayPng(data: Uint8Array, w: number, h: number): Uint8Array {
+  const out = new mupdf.Pixmap(mupdf.ColorSpace.DeviceGray, [0, 0, w, h], false);
+  // 画素の配列は WASM のメモリを直接見ているので、取り出したらすぐ書く
+  const dst = out.getPixels();
+  const os = out.getStride();
+  for (let y = 0; y < h; y++) dst.set(data.subarray(y * w, y * w + w), y * os);
+  const png = out.asPNG().slice();
+  out.destroy();
+  return png;
+}
+
 function extractText(docId: string, page: number): TextResult {
   const d = docs.get(docId);
   if (!d) throw new Error("document is not open");
@@ -296,6 +312,7 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
     case "render":
     case "text":
     case "ocrImage":
+    case "grayPng":
       enqueue(req, req.priority);
       return;
   }

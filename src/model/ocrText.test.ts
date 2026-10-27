@@ -160,6 +160,7 @@ function inkImage(
     commas?: [number, number][];
     faint?: number[];
     slashes?: [number, number][];
+    triangles?: [number, number][];
   } = {},
 ): GrayImage {
   const W = 400;
@@ -182,6 +183,12 @@ function inkImage(
   for (const [a, b] of opts.commas ?? []) fill(a, b, 134, 146);
   // 薄い縦線（文字の高さと同じ）
   for (const r of opts.faint ?? []) for (let y = 100; y < 140; y++) data[y * W + r] = 200;
+  // 塗りつぶした三角「▲」（上が尖り、下が字の幅いっぱい）
+  for (const [a, b] of opts.triangles ?? [])
+    for (let y = 104; y < 140; y++) {
+      const half = ((b - a) / 2) * ((y - 104) / 35);
+      fill(Math.round((a + b) / 2 - half), Math.round((a + b) / 2 + half) + 1, y, y + 1);
+    }
   // 斜線「/」（右上から左下へのひと筆）
   for (const [a, b] of opts.slashes ?? [])
     for (let y = 100; y < 140; y++) {
@@ -344,6 +351,52 @@ describe("インクで読み違いを直す", () => {
     expect(ocrToPageText([{ words: [w] }], ID, inkImage(digits, { slashes: [[140, 156]] })).chars.join("")).toBe("10/15");
     // 上の横棒がある本当の「7」はそのまま
     expect(ocrToPageText([{ words: [w] }], ID, inkImage([...digits, [140, 156]])).chars.join("")).toBe("10715");
+  });
+
+  it("小数点そのものを「1」と読んだとき（「11.7」が「1117」に）は、点だけのインクなら小数点に直す", () => {
+    const w = ocrWord([
+      ["1", 100, 108],
+      ["1", 115, 123],
+      ["1", 132, 140],
+      ["7", 148, 168],
+    ]);
+    const digits: [number, number][] = [
+      [100, 108],
+      [115, 123],
+      [148, 168],
+    ];
+    expect(ocrToPageText([{ words: [w] }], ID, inkImage(digits, { dots: [[134, 139]] })).chars.join("")).toBe("11.7");
+    // 数字と同じ高さの「1」はそのまま
+    expect(ocrToPageText([{ words: [w] }], ID, inkImage([...digits, [132, 140]])).chars.join("")).toBe("1117");
+  });
+
+  it("かすれて読めなかった小数点を、数字の間の空きから補う（「100.8」が「1008」に）", () => {
+    // 数字の間隔は 20。「0」と「8」の間だけ小数点1つ分（30）空いている
+    const at = (x: number): [number, number] => [x, x + 16];
+    const xs = [100, 120, 140, 170, 250, 270, 290, 310];
+    const w = ocrWord(["1", "0", "0", "8"].map((t, i) => [t, ...at(xs[i])]));
+    const v = ocrWord(["2", "3", "4", "5"].map((t, i) => [t, ...at(xs[i + 4])]));
+    const ink = inkImage(xs.map(at));
+    expect(ocrToPageText([{ words: [w, v] }], ID, ink).chars.join("")).toBe("100.82345");
+    // 前が1桁だけのとき（「▲31」を「431」と読んだときなど）は補わない
+    const u = ocrWord(["4", "3", "1"].map((t, i) => [t, ...at([100, 130, 150][i])]));
+    const ink2 = inkImage([100, 130, 150, 250, 270, 290, 310].map(at));
+    expect(ocrToPageText([{ words: [u, v] }], ID, ink2).chars.join("")).toBe("4312345");
+  });
+
+  it("増減の「▲」を「4」と読んだとき（「▲31」が「431」に）は、塗りつぶした三角のインクなら「▲」に直す", () => {
+    const w = ocrWord([
+      ["4", 100, 122],
+      ["3", 130, 150],
+      ["1", 156, 164],
+    ]);
+    const digits: [number, number][] = [
+      [130, 150],
+      [156, 164],
+    ];
+    expect(ocrToPageText([{ words: [w] }], ID, inkImage(digits, { triangles: [[100, 122]] })).chars.join("")).toBe("▲31");
+    // 本当の「4」（枠だけの形）はそのまま
+    expect(ocrToPageText([{ words: [w] }], ID, inkImage([[100, 122], ...digits])).chars.join("")).toBe("431");
   });
 
   it("表の枠線を「|」と読んだものは「1」にしない（「17.2|」）。数字と同じような縦棒は「1」", () => {
