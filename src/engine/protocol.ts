@@ -175,6 +175,8 @@ export type WorkerRequest =
       /** 白く消してから読む範囲（PDFの文字がある所。元ページ空間の [x0, y0, x1, y1] × n） */
       blank?: number[];
     }
+  /** 1画素1バイトの濃淡の画像を PNG にする（文字認識の読み直しに使う） */
+  | { type: "grayPng"; id: number; data: Uint8Array; width: number; height: number; priority: number }
   | { type: "close"; id: number; docId: string }
   | { type: "export"; id: number; job: ExportJob }
   | { type: "cancel"; ids: number[] };

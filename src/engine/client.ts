@@ -101,6 +101,10 @@ class Engine {
     return this.call<OcrImageResult>({ type: "ocrImage", docId, page, rotate, dpi, priority, jpeg, blank }).promise;
   }
 
+  grayPng(data: Uint8Array, width: number, height: number, priority = 7): Promise<Uint8Array> {
+    return this.call<Uint8Array>({ type: "grayPng", data, width, height, priority }, [data.buffer as ArrayBuffer]).promise;
+  }
+
   close(docId: string) {
     return this.call<null>({ type: "close", docId }).promise;
   }
