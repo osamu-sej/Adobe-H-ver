@@ -83,6 +83,14 @@ describe("文字認識の結果を文字層にする", () => {
     expect(idx.full).toBe("03-1234");
   });
 
+  it("間の空いた2単語に分かれた携帯番号を検索できる", () => {
+    const phone = ocrToPageText(
+      [{ words: [ocrWord([["0", 100, 118], ["9", 122, 140], ["0", 144, 162]]), ocrWord([..."12345678"].map((c, i): [string, number, number] => [c, 182 + i * 22, 200 + i * 22]))] }],
+      ID,
+    );
+    expect(searchIndex(buildIndex(phone), presetRegex("phone")!).length).toBe(1);
+  });
+
   it("狭い空白は空白として入り、電話番号のプリセットで見つかる", () => {
     const lines: OcrLine[] = [{ words: [word("TEL", 0), word("03-1234-5678", 70)] }];
     const idx = buildIndex(ocrToPageText(lines, ID));
@@ -269,6 +277,12 @@ describe("インクで読み違いを直す", () => {
         ]),
       ).chars.join(""),
     ).toBe("71");
+    // 別の単語のインクを、自分の二重読みの根拠にしない。
+    const [near] = snapToInk(
+      [{ words: [w, ocrWord([["1", 142, 152]])] }],
+      inkImage([[100, 120], [128, 140], [142, 152]]),
+    );
+    expect(near.words.map((x) => x.symbols.map((s) => s.text).join(""))).toEqual(["71", "1"]);
     // 後ろに単位があっても同じ（「円」のインクは数字の分に数えない）
     const yen = ocrWord([
       ["7", 100, 118],
@@ -311,6 +325,17 @@ describe("インクで読み違いを直す", () => {
       ["7", 121, 142],
     ]);
     expect(ocrToPageText([{ words: [pair] }], ID, inkImage([[100, 142]])).chars.join("")).toBe("77");
+  });
+
+  it("薄い数字の一部だけ濃くても、字形全体の高さを保つ", () => {
+    const img = inkImage([[100, 120], [126, 146]]);
+    for (let i = 0; i < img.data.length; i++) if (img.data[i] === 0) img.data[i] = 190;
+    for (let y = 136; y < 140; y++) for (let x = 100; x < 104; x++) img.data[y * img.width + x] = 0;
+    const [line] = snapToInk([{ words: [ocrWord([["1", 100, 120], ["2", 126, 146]])] }], img);
+    for (const symbol of line.words[0].symbols) {
+      expect(symbol.bbox.y0).toBeLessThan(105);
+      expect(symbol.bbox.y1).toBeGreaterThan(135);
+    }
   });
 
   it("「%」を「9%」と読んだとき（「103.7%」が「103.79%」に）は、余分な数字を除く", () => {

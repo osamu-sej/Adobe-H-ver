@@ -478,9 +478,8 @@ function snapGroup(words: OcrWord[], img: GrayImage, others: OcrBox[]): OcrWord[
   // くっついた2文字（幅が数字1つ分より広い）は除かない
   // 単語の数字の数だけ数字ほどの幅のインクがあれば、インクのない数字は認識の枠がずれただけ（「53466」の「46」が
   // くっついて1つのまとまりになり、最後の「6」の枠が前の「6」の枠の中に入っていたなど）なので除かない
-  // 数字でない文字（「71円」の「円」など）に割り当てたインクは数えない。
+  // 数字でない文字や、隣の単語の文字に割り当てたインクは数えない。
   // くっついた数字の数は、幅の狭い「1」を除いた数字の幅で数える（「1」の幅で数えると、ふつうの「7」が2文字分になる）
-  const otherInk = new Set(assigned.flatMap((a, j) => (isDigitSym[j] ? [] : a)));
   const wideDigits = assigned
     .flatMap((a, k) =>
       isDigitSym[k] && a.length === 1 && order[k].s.text.normalize("NFKC") !== "1"
@@ -491,6 +490,7 @@ function snapGroup(words: OcrWord[], img: GrayImage, others: OcrBox[]): OcrWord[
   const countW = wideDigits.length ? median(wideDigits) : digitW;
   const enoughInk = (wi: number) => {
     const b = words[wi].bbox;
+    const otherInk = new Set(assigned.flatMap((a, j) => (isDigitSym[j] && order[j].wi === wi ? [] : a)));
     const ink = segs.filter(
       (g, i) =>
         !otherInk.has(i) &&
@@ -877,7 +877,8 @@ function inkRows(img: GrayImage, x0: number, x1: number, y0: number, y1: number)
       if (v > hi) hi = v;
     }
   if (hi - lo < 60) return null;
-  const t = Math.floor((lo + hi) / 2);
+  // 一部だけ濃い文字でも薄い字形全体を拾う（マーカーの重なりなど）。
+  const t = otsu(hist, (x1 - x0) * (y1 - y0));
   const light = inverted(hist, t, (x1 - x0) * (y1 - y0));
   let best: { y0: number; y1: number; mass: number } | null = null;
   let start = -1;
