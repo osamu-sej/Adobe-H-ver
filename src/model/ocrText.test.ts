@@ -41,6 +41,17 @@ describe("文字認識の結果を文字層にする", () => {
     // 数字の隣でなければそのまま
     expect(fixConfusables(["N", "o", "."]).join("")).toBe("No.");
     expect(fixConfusables(["l", "a", "b"]).join("")).toBe("lab");
+    expect(fixConfusables([..."iQ452"]).join("")).toBe("10452");
+    expect(fixConfusables([..."Q2026"]).join("")).toBe("Q2026");
+    expect(fixConfusables([..."iQ3"]).join("")).toBe("iQ3");
+  });
+
+  it("数字を英字混じりに読み違えても、先頭まで数字マスクの対象にする", () => {
+    const t = ocrToPageText([{ words: [word("iQ452", 100)] }], ID);
+    const hits = snapToRange(buildIndex(t), { x: 40, y: 40, w: 100, h: 50 }, "digits");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].text).toBe("10452");
+    expect(hits[0].rect.x).toBeLessThan(50);
   });
 
   it("離れたセル同士はつながらず、別々に隠せる", () => {

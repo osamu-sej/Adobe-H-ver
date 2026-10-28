@@ -115,6 +115,13 @@ export function fixConfusables(texts: string[]): string[] {
       }
       const near = digit(out[i - 1]) || digit(out[i + 1]);
       if (!near) continue;
+      // 数字の連なりを「iQ...」のように読み違える場合がある。
+      // Q3 のような四半期表記まで数字にしないよう、直前が 1 の読み違いで、
+      // 直後に複数の数字が続く場合に限る。
+      if (t === "Q" && LIKE_ONE.has(out[i - 1]) && digit(out[i + 1]) && digit(out[i + 2])) {
+        out[i] = "0";
+        continue;
+      }
       if (LIKE_ONE.has(t) || LIKE_ONE.has(texts[i])) {
         out[i] = "1";
       } else if (LIKE_ZERO.has(t) || LIKE_ZERO.has(texts[i])) {
