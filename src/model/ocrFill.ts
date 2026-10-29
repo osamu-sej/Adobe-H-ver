@@ -33,6 +33,8 @@ interface Comp extends OcrBox {
 export interface FillGroup {
   box: OcrBox;
   runs: [number, number, number][];
+  /** 隣り合う濃い文字の影響を受けず、字形ごとに濃さを調整する */
+  components: [number, number, number][][];
 }
 
 /** 1回目の認識で確かに読めた単語の自信（これより低い単語の所は、読み違いかもしれないので読み直す） */
@@ -184,7 +186,10 @@ export function unreadGroups(img: GrayImage, lines: OcrLine[], dpi = 300): FillG
   // 文字の高さの読み残しがない行（読めた行、点や小さなかけらだけ）、高すぎる行は読まない
   return [...groups.values()]
     .filter((g) => g.seed && g.box.y1 - g.box.y0 <= maxH)
-    .map((g) => ({ box: g.box, runs: g.members.flatMap((i) => comps[i].runs.map((r) => runs[r])) }));
+    .map((g) => {
+      const parts = g.members.map((i) => comps[i].runs.map((r) => runs[r]));
+      return { box: g.box, runs: parts.flat(), components: parts };
+    });
 }
 
 /** 読み直す画像の中の1行：元の画像の範囲 src と、並べた画像での位置（左上）と倍率 */
@@ -207,7 +212,7 @@ export interface FillCollage {
  * 行のインクだけを写し（上下の行の文字の端が入らないように）、明るさを伸ばして（薄い灰色の文字も黒く）、小さい文字は拡大する。
  * 伸ばした明るさは元の画像にも書き戻す（あとでインクに位置を合わせるため）
  */
-export function buildCollages(img: GrayImage, groups: FillGroup[]): FillCollage[] {
+export function buildCollages(img: GrayImage, groups: FillGroup[], enhanceMixed = false): FillCollage[] {
   const { data, width: W, height: H } = img;
   type Item = { src: OcrBox; scale: number; w: number; h: number; px: Uint8Array };
   const items: Item[] = [];
@@ -225,22 +230,30 @@ export function buildCollages(img: GrayImage, groups: FillGroup[]): FillCollage[
     const sw = src.x1 - src.x0;
     const sh = src.y1 - src.y0;
     // 行のインクの画素と、そのすぐ周り（文字の縁のぼかし）
-    const mask = new Uint8Array(sw * sh);
-    for (const [y, x0, x1] of gr.runs)
-      for (let y2 = Math.max(src.y0, y - 1); y2 <= Math.min(src.y1 - 1, y + 1); y2++)
-        mask.fill(
-          1,
-          (y2 - src.y0) * sw + Math.max(0, x0 - 1 - src.x0),
-          (y2 - src.y0) * sw + Math.min(sw, x1 + 1 - src.x0),
-        );
-    // 行の中の明るさを伸ばす：いちばん暗い所を黒に、白に近い所を白にする
-    let lo = 255;
-    for (const [y, x0, x1] of gr.runs) for (let x = x0; x < x1; x++) lo = Math.min(lo, data[y * W + x]);
-    const hi = Math.max(lo + 40, 245);
+    const levels = new Int16Array(sw * sh).fill(-1);
+    // 通常は従来の行全体の濃さを使う。追加読みでは字形ごとに濃さを伸ばし、
+    // 行に黒い文字があっても薄い数字を黒くできる。
+    let rowLo = 255;
+    for (const [y, x0, x1] of gr.runs) for (let x = x0; x < x1; x++) rowLo = Math.min(rowLo, data[y * W + x]);
+    for (const component of gr.components) {
+      let lo = rowLo;
+      if (enhanceMixed) {
+        lo = 255;
+        for (const [y, x0, x1] of component) for (let x = x0; x < x1; x++) lo = Math.min(lo, data[y * W + x]);
+      }
+      for (const [y, x0, x1] of component)
+        for (let y2 = Math.max(src.y0, y - 1); y2 <= Math.min(src.y1 - 1, y + 1); y2++)
+          for (let x = Math.max(src.x0, x0 - 1); x < Math.min(src.x1, x1 + 1); x++) {
+            const i = (y2 - src.y0) * sw + x - src.x0;
+            levels[i] = Math.max(levels[i], lo);
+          }
+    }
     const px = new Uint8Array(sw * sh).fill(255);
     for (let y = 0; y < sh; y++)
       for (let x = 0; x < sw; x++) {
-        if (!mask[y * sw + x]) continue;
+        const lo = levels[y * sw + x];
+        if (lo < 0) continue;
+        const hi = Math.max(lo + 40, 245);
         const i = (y + src.y0) * W + x + src.x0;
         data[i] = Math.max(0, Math.min(255, Math.round(((data[i] - lo) * 255) / (hi - lo))));
         px[y * sw + x] = data[i];

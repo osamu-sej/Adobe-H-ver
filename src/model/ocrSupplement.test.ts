@@ -23,6 +23,14 @@ describe("元画像による数字の追加読み取り", () => {
     expect(supplementLines(input)[0].words.map((w) => w.symbols.map((s) => s.text).join(""))).toEqual(["12", "12(-3)"]);
   });
 
+  it("数字に単位や方角が続くときは数字だけを追加し、単位を隠さない", () => {
+    const input: OcrLine[] = [{ words: [word("20km/h", 10), word("130E", 100), word("29News", 170), word("18日", 240), word("18日曜", 270), word("20kmX", 320), word("30km", 380, 40)] }];
+    const values = supplementLines(input)[0].words.map((w) => w.symbols.map((s) => s.text).join(""));
+    expect(values).toEqual(["20", "130", "18"]);
+    const result = supplementDigits(base, input, id, img);
+    expect(result.chars.join("")).not.toMatch(/[kmEh日]/);
+  });
+
   it("既存の文字を保ち、離れた数字を吸着できるように足す", () => {
     const input: OcrLine[] = [{ words: [word("42", 100)] }];
     const result = supplementDigits(base, input, id, img);

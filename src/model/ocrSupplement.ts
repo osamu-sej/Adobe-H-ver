@@ -2,21 +2,51 @@ import { mergeOcr } from "./pageText";
 import { ocrToPageText, type GrayImage, type Matrix6, type OcrLine, type OcrWord } from "./ocrText";
 import type { PageText } from "./types";
 
-/** 元画像からの再読みによる追加候補。文字・図形の誤認を抑えるため、数字が複数ある語に限定する。 */
+type Candidate = OcrWord & { unitContext?: boolean };
+const NUMERIC = /^[\d.,:+%/()\-]+$/;
+// 数字に続く実際の単位・方角。一般的な英単語は対象にしない。
+const UNIT = /^[\d.,:+%/()\-]+(?:km(?:\/h)?|hpa|nm|kts|m\/s|[EN]|円|日|月|年|時|分)$/i;
+
+/** 数字が複数ある語、または単位の付いた語の数値部分を候補にする。 */
 export function supplementLines(lines: OcrLine[]): OcrLine[] {
   return lines.map((line) => ({
-    words: line.words.filter((word) => {
+    words: line.words.flatMap((word): Candidate[] => {
       const text = word.symbols.map((s) => s.text).join("").normalize("NFKC").trim();
-      return word.confidence >= 30 && (text.match(/\d/g)?.length ?? 0) >= 2 && /^[\d.,:+%/()\-]+$/.test(text);
-    }).map((word) => ({
-      ...word,
-      symbols: word.symbols.filter((s) => {
-        const c = s.text.normalize("NFKC");
-        const w = s.bbox.x1 - s.bbox.x0;
-        const h = s.bbox.y1 - s.bbox.y0;
-        return !/^[023456789]$/.test(c) || w >= h * 0.18;
-      }),
-    })).filter((word) => word.symbols.length > 0),
+      if (word.confidence < 30) return [];
+      let candidates: Candidate[] = [];
+      if (NUMERIC.test(text) && (text.match(/\d/g)?.length ?? 0) >= 2) candidates = [word];
+      else if (word.confidence >= 65 && UNIT.test(text)) {
+        // 例: 「20km/h」「127.0E」は数字の部分だけを取り出し、単位は隠さない。
+        let run: OcrWord["symbols"] = [];
+        const flush = () => {
+          const digits = run.map((s) => s.text).join("").normalize("NFKC").match(/\d/g)?.length ?? 0;
+          if (digits >= 2) candidates.push({
+            ...word,
+            unitContext: true,
+            symbols: run,
+            bbox: {
+              x0: Math.min(...run.map((s) => s.bbox.x0)), y0: Math.min(...run.map((s) => s.bbox.y0)),
+              x1: Math.max(...run.map((s) => s.bbox.x1)), y1: Math.max(...run.map((s) => s.bbox.y1)),
+            },
+          });
+          run = [];
+        };
+        for (const symbol of word.symbols) {
+          if (NUMERIC.test(symbol.text.normalize("NFKC"))) run.push(symbol);
+          else flush();
+        }
+        flush();
+      }
+      return candidates.map((candidate) => ({
+        ...candidate,
+        symbols: candidate.symbols.filter((symbol) => {
+          const c = symbol.text.normalize("NFKC");
+          const w = symbol.bbox.x1 - symbol.bbox.x0;
+          const h = symbol.bbox.y1 - symbol.bbox.y0;
+          return !/^[023456789]$/.test(c) || w >= h * 0.18;
+        }),
+      })).filter((candidate) => candidate.symbols.length > 0);
+    }),
   })).filter((line) => line.words.length > 0);
 }
 
@@ -45,7 +75,7 @@ export function supplementDigits(base: PageText, lines: OcrLine[], toPage: Matri
       const text = word.symbols.map((s) => s.text).join("").normalize("NFKC");
       // 無地の図・写真を数字と誤認するのを抑える。桁ごとにインクが対応しない
       // 数字だけの語は、暗い地の白抜き文字の場合を除いて追加しない。
-      return word.inkMatched !== false || /[.,():]/.test(text) || darkBackground(word, img);
+      return word.inkMatched !== false || (word as Candidate).unitContext === true || /[.,():]/.test(text) || darkBackground(word, img);
     }),
   })).filter((line) => line.words.length > 0);
   if (!candidates.length) return base;
