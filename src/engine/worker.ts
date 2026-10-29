@@ -113,7 +113,7 @@ async function handle(req: WorkerRequest & { id: number }) {
       return;
     }
     case "ocrImage": {
-      const r = ocrImage(req.docId, req.page, req.rotate, req.dpi, !!req.jpeg, req.blank);
+      const r = ocrImage(req.docId, req.page, req.rotate, req.dpi, !!req.jpeg, req.blank, !!req.original);
       const transfer = [r.png.buffer as ArrayBuffer, r.gray.buffer as ArrayBuffer];
       if (r.jpeg) transfer.push(r.jpeg.buffer as ArrayBuffer);
       post({ type: "result", id: req.id, ok: true, value: r }, transfer);
@@ -232,7 +232,7 @@ async function render(docId: string, page: number, scale: number): Promise<Rende
  * 文字認識用に、ページを高解像度のグレースケール画像にする（向きを変えて読むときは回転して描く）。
  * blank にはPDFの文字がある範囲を入れる：白く消して、画像や図の中の文字だけを読む（クラウドにもPDFの文字は送らない）
  */
-function ocrImage(docId: string, page: number, rotate: number, dpi: number, withJpeg: boolean, blank?: number[]): OcrImageResult {
+function ocrImage(docId: string, page: number, rotate: number, dpi: number, withJpeg: boolean, blank?: number[], original = false): OcrImageResult {
   const d = docs.get(docId);
   if (!d) throw new Error("document is not open");
   const p = d.doc.loadPage(page);
@@ -253,7 +253,16 @@ function ocrImage(docId: string, page: number, rotate: number, dpi: number, with
   const rgb = pix.getPixels();
   if (blank?.length) blankRects(rgb, w, h, pix.getStride(), blank, mupdf.Matrix.invert(toPage) as OcrImageResult["toPage"]);
   // 色の付いたセルや罫線を消して、読みやすい白黒の濃淡にする
-  const gray = prepareOcrImage(rgb, w, h, pix.getStride(), k * 72);
+  const stride = pix.getStride();
+  let gray: Uint8Array;
+  if (original) {
+    gray = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        const i = y * stride + x * 3;
+        gray[y * w + x] = Math.round(0.299 * rgb[i] + 0.587 * rgb[i + 1] + 0.114 * rgb[i + 2]);
+      }
+  } else gray = prepareOcrImage(rgb, w, h, stride, k * 72);
   const jpeg = withJpeg ? pix.asJPEG(85).slice() : undefined;
   pix.destroy();
   const out = new mupdf.Pixmap(mupdf.ColorSpace.DeviceGray, [0, 0, w, h], false);

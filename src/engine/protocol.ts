@@ -172,6 +172,8 @@ export type WorkerRequest =
       dpi: number;
       priority: number;
       jpeg?: boolean;
+      /** 前処理せず、元画像の濃淡で読み直す */
+      original?: boolean;
       /** 白く消してから読む範囲（PDFの文字がある所。元ページ空間の [x0, y0, x1, y1] × n） */
       blank?: number[];
     }

@@ -2,6 +2,7 @@ import type { Worker as OcrWorker } from "tesseract.js";
 import { engine } from "../engine/client";
 import { annotate, CloudOcrError, readingTurn, uprightReading, visionToLines } from "./cloudOcr";
 import { buildCollages, fromCollage, mergeFill, unreadGroups } from "./ocrFill";
+import { supplementDigits } from "./ocrSupplement";
 import { OCR_PARAMS, ocrToPageText, orientationScore, readsWell, snapToInk, type GrayImage, type Matrix6, type OcrLine } from "./ocrText";
 import type { OcrMode } from "./pageText";
 import { toast, useStore } from "./store";
@@ -274,6 +275,7 @@ interface Reading {
   toPage: Matrix6;
   image: GrayImage;
   score: { good: number; total: number };
+  rotate: number;
 }
 
 /** PNG の画像を読み、行ごとの単語にする */
@@ -293,10 +295,10 @@ async function recognizeLines(worker: OcrWorker, png: Uint8Array): Promise<OcrLi
   return lines;
 }
 
-async function read(worker: OcrWorker, docId: string, page: number, rotate: number, dpi: number, blank?: number[]): Promise<Reading> {
-  const img = await engine.ocrImage(docId, page, rotate, dpi, 7, false, blank);
+async function read(worker: OcrWorker, docId: string, page: number, rotate: number, dpi: number, blank?: number[], original = false): Promise<Reading> {
+  const img = await engine.ocrImage(docId, page, rotate, dpi, 7, false, blank, original);
   const lines = await recognizeLines(worker, img.png);
-  return { lines, toPage: img.toPage, image: { data: img.gray, width: img.width, height: img.height }, score: orientationScore(lines) };
+  return { lines, toPage: img.toPage, image: { data: img.gray, width: img.width, height: img.height }, score: orientationScore(lines), rotate };
 }
 
 /** 1ページで読み直す行の数の上限（写真の模様などで多くなりすぎたときに時間がかからないように） */
@@ -365,5 +367,14 @@ async function recognizePage(worker: OcrWorker, job: Job): Promise<PageText> {
       if (turned.score.good > best.score.good) best = turned;
     }
   }
-  return ocrToPageText(await fillUnread(worker, best), best.toPage, best.image);
+  const primary = ocrToPageText(await fillUnread(worker, best), best.toPage, best.image);
+  try {
+    // 前処理で薄い文字や白抜き文字が消えた場合に備え、同じ向きの元画像も読み、
+    // 確かな数字の候補だけを先の文字層に足す。元画像は外部へ送らない。
+    const raw = await read(worker, docId, page, best.rotate, 300, job.blank, true);
+    return supplementDigits(primary, await fillUnread(worker, raw), raw.toPage, raw.image);
+  } catch {
+    toast({ message: "元画像の追加読み取りに失敗したため、最初の文字認識結果を表示します。見逃しを確認してください。", tone: "warn", duration: 9000 });
+    return primary;
+  }
 }
