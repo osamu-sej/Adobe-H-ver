@@ -43,6 +43,18 @@ describe("文字認識の前に画像を整える", () => {
   const g = prepareOcrImage(data, W, H, W * 3, 300);
   const at = (x: number, y: number) => g[y * W + x];
 
+  it("同じ描画から作った元画像と前処理画像は、それぞれ従来の画像と一致する", () => {
+    const original = new Uint8Array(W * H);
+    const prepared = prepareOcrImage(data, W, H, W * 3, 300, original);
+    expect(prepared).toEqual(g);
+    const expected = new Uint8Array(W * H);
+    for (let i = 0; i < original.length; i++) {
+      const o = i * 3;
+      expected[i] = Math.round(0.299 * data[o] + 0.587 * data[o + 1] + 0.114 * data[o + 2]);
+    }
+    expect(original).toEqual(expected);
+  });
+
   it("色の付いたセルは白くなり、黒い文字は残る", () => {
     expect(at(30, 25)).toBe(255);
     expect(at(52, 50)).toBeLessThan(80);

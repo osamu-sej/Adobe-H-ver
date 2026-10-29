@@ -115,6 +115,7 @@ export function prepareOcrImage(
   height: number,
   stride: number,
   dpi: number,
+  originalGray?: Uint8Array,
 ): Uint8Array {
   const n = width * height;
   const g = new Uint8Array(n);
@@ -137,6 +138,7 @@ export function prepareOcrImage(
       const hi = Math.max(r, gr, b);
       const sat = hi - Math.min(r, gr, b);
       const lum = 0.299 * r + 0.587 * gr + 0.114 * b;
+      if (originalGray) originalGray[i] = Math.round(lum);
       // 濃い色（赤や青の文字、赤いセル）は暗いまま。薄い色（オレンジのセル、マーカー）は白っぽくする
       if (sat > DEEP_SAT && lum < DEEP_LUM) {
         deep[i] = 1;
