@@ -115,6 +115,13 @@ export function fixConfusables(texts: string[]): string[] {
       }
       const near = digit(out[i - 1]) || digit(out[i + 1]);
       if (!near) continue;
+      // 数字の連なりを「iQ...」のように読み違える場合がある。
+      // Q3 のような四半期表記まで数字にしないよう、直前が 1 の読み違いで、
+      // 直後に複数の数字が続く場合に限る。
+      if (t === "Q" && LIKE_ONE.has(out[i - 1]) && digit(out[i + 1]) && digit(out[i + 2])) {
+        out[i] = "0";
+        continue;
+      }
       if (LIKE_ONE.has(t) || LIKE_ONE.has(texts[i])) {
         out[i] = "1";
       } else if (LIKE_ZERO.has(t) || LIKE_ZERO.has(texts[i])) {
@@ -476,13 +483,40 @@ function snapGroup(words: OcrWord[], img: GrayImage, others: OcrBox[]): OcrWord[
   );
   // 同じ数字を二重に読んだ（「71」を「771」など）：インクのない数字の隣に、数字1つ分のインクを取った同じ数字があれば、余分とみなして除く。
   // くっついた2文字（幅が数字1つ分より広い）は除かない
+  // 単語の数字の数だけ数字ほどの幅のインクがあれば、インクのない数字は認識の枠がずれただけ（「53466」の「46」が
+  // くっついて1つのまとまりになり、最後の「6」の枠が前の「6」の枠の中に入っていたなど）なので除かない
+  // 数字でない文字や、隣の単語の文字に割り当てたインクは数えない。
+  // くっついた数字の数は、幅の狭い「1」を除いた数字の幅で数える（「1」の幅で数えると、ふつうの「7」が2文字分になる）
+  const wideDigits = assigned
+    .flatMap((a, k) =>
+      isDigitSym[k] && a.length === 1 && order[k].s.text.normalize("NFKC") !== "1"
+        ? [segs[a[0]].x1 - segs[a[0]].x0]
+        : [],
+    )
+    .filter((x) => x >= h * 0.25);
+  const countW = wideDigits.length ? median(wideDigits) : digitW;
+  const enoughInk = (wi: number) => {
+    const b = words[wi].bbox;
+    const otherInk = new Set(assigned.flatMap((a, j) => (isDigitSym[j] && order[j].wi === wi ? [] : a)));
+    const ink = segs.filter(
+      (g, i) =>
+        !otherInk.has(i) &&
+        g.x1 - g.x0 >= h * 0.25 &&
+        (g.x0 + g.x1) / 2 >= b.x0 - h * 0.2 &&
+        (g.x0 + g.x1) / 2 <= b.x1 + h * 0.2,
+    );
+    // くっついた数字（「466」の「46」など）は、数字の幅の何個分かで数える
+    const count = ink.reduce((n, g) => n + Math.max(1, Math.round((g.x1 - g.x0) / countW)), 0);
+    return count >= order.filter((o, j) => o.wi === wi && isDigitSym[j]).length;
+  };
   const dropped = new Set<number>();
   for (let k = 0; k < m; k++) {
     if (!isDigitSym[k] || assigned[k].length) continue;
     const twin = [k - 1, k + 1].some((nb) => {
       if (nb < 0 || nb >= m || order[nb].wi !== order[k].wi || assigned[nb].length !== 1) return false;
       const width = segs[assigned[nb][0]].x1 - segs[assigned[nb][0]].x0;
-      if (order[nb].s.text === order[k].s.text) return width <= Math.min(digitW * 1.3, h * 0.8);
+      if (order[nb].s.text === order[k].s.text)
+        return width <= Math.min(digitW * 1.3, h * 0.8) && !enoughInk(order[k].wi);
       // 「%」を「9%」と読んだとき：「%」のインクが1文字分しかなければ、数字は「%」の一部を読んだもの
       return order[nb].s.text.normalize("NFKC") === "%" && width <= h * PERCENT_W;
     });
@@ -491,17 +525,21 @@ function snapGroup(words: OcrWord[], img: GrayImage, others: OcrBox[]): OcrWord[
   // 表の縦の罫線を「1」と読んだもの（「96.1」が「196.1」に）：インクのない「1」が罫線の位置にあれば除く。
   // 点線の罫線は罫線として見つからないので、インクのない数字の認識の枠がほとんど隣の文字の枠の中にあるもの
   // （同じインクを2文字に読んだ）も除く
+  const misread = new Set<number>();
   for (let k = 0; k < m; k++) {
     const s = order[k].s;
     if (!isDigitSym[k] || assigned[k].length || dropped.has(k)) continue;
     const onRule =
       s.text.normalize("NFKC") === "1" && ruleXs.some((x) => x >= s.bbox.x0 - h * 0.15 && x <= s.bbox.x1 + h * 0.15);
-    const inside = [k - 1, k + 1].some((nb) => {
-      if (nb < 0 || nb >= m || order[nb].wi !== order[k].wi || !assigned[nb].length) return false;
-      const o = order[nb].s.bbox;
-      return Math.min(o.x1, s.bbox.x1) - Math.max(o.x0, s.bbox.x0) >= (s.bbox.x1 - s.bbox.x0) * 0.7;
-    });
-    if (onRule || inside) dropped.add(k);
+    const host = enoughInk(order[k].wi)
+      ? -1
+      : ([k - 1, k + 1].find((nb) => {
+          if (nb < 0 || nb >= m || order[nb].wi !== order[k].wi || !assigned[nb].length) return false;
+          const o = order[nb].s.bbox;
+          return Math.min(o.x1, s.bbox.x1) - Math.max(o.x0, s.bbox.x0) >= (s.bbox.x1 - s.bbox.x0) * 0.7;
+        }) ?? -1);
+    if (onRule || host >= 0) dropped.add(k);
+    if (!onRule && host >= 0 && order[host].s.text !== s.text) misread.add(order[k].wi);
   }
   // 「%」を「9%」と読み、数字の方が「%」のインクを取ったとき（数字にしては幅が広い）も、数字を除いてインクを「%」に戻す
   for (let k = 0; k + 1 < m; k++) {
@@ -608,10 +646,12 @@ function snapGroup(words: OcrWord[], img: GrayImage, others: OcrBox[]): OcrWord[
     });
   }
   // 1文字に1つずつ、近くのインクが対応したか（認識の自信が低くても、本物の文字とみなせる）
-  // 1文字だけの単語は写真の模様でも偶然そろうので数えない
+  // 1文字だけの単語は写真の模様でも偶然そろうので数えない。
+  // 同じインクを違う2文字に読んだ単語（「10/15」を「10/715」など。どちらが正しいかわからない）も数えない
   return out.map((w, wi) => {
     const ks = order.map((o, k) => (o.wi === wi && !dropped.has(k) ? k : -1)).filter((k) => k >= 0);
-    const inkMatched = ks.length >= 2 && ks.every((k) => assigned[k].length === 1 && cost(assigned[k][0], k) < 0.35);
+    const inkMatched =
+      ks.length >= 2 && !misread.has(wi) && ks.every((k) => assigned[k].length === 1 && cost(assigned[k][0], k) < 0.35);
     return { ...w, inkMatched };
   });
 }
@@ -844,7 +884,8 @@ function inkRows(img: GrayImage, x0: number, x1: number, y0: number, y1: number)
       if (v > hi) hi = v;
     }
   if (hi - lo < 60) return null;
-  const t = Math.floor((lo + hi) / 2);
+  // 一部だけ濃い文字でも薄い字形全体を拾う（マーカーの重なりなど）。
+  const t = otsu(hist, (x1 - x0) * (y1 - y0));
   const light = inverted(hist, t, (x1 - x0) * (y1 - y0));
   let best: { y0: number; y1: number; mass: number } | null = null;
   let start = -1;

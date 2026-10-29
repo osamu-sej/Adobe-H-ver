@@ -41,6 +41,17 @@ describe("文字認識の結果を文字層にする", () => {
     // 数字の隣でなければそのまま
     expect(fixConfusables(["N", "o", "."]).join("")).toBe("No.");
     expect(fixConfusables(["l", "a", "b"]).join("")).toBe("lab");
+    expect(fixConfusables([..."iQ452"]).join("")).toBe("10452");
+    expect(fixConfusables([..."Q2026"]).join("")).toBe("Q2026");
+    expect(fixConfusables([..."iQ3"]).join("")).toBe("iQ3");
+  });
+
+  it("数字を英字混じりに読み違えても、先頭まで数字マスクの対象にする", () => {
+    const t = ocrToPageText([{ words: [word("iQ452", 100)] }], ID);
+    const hits = snapToRange(buildIndex(t), { x: 40, y: 40, w: 100, h: 50 }, "digits");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].text).toBe("10452");
+    expect(hits[0].rect.x).toBeLessThan(50);
   });
 
   it("離れたセル同士はつながらず、別々に隠せる", () => {
@@ -81,6 +92,14 @@ describe("文字認識の結果を文字層にする", () => {
     });
     const idx = buildIndex(ocrToPageText([{ words: [{ confidence: 95, bbox: box(0, 100, 140, 130), symbols }] }], ID));
     expect(idx.full).toBe("03-1234");
+  });
+
+  it("間の空いた2単語に分かれた携帯番号を検索できる", () => {
+    const phone = ocrToPageText(
+      [{ words: [ocrWord([["0", 100, 118], ["9", 122, 140], ["0", 144, 162]]), ocrWord([..."12345678"].map((c, i): [string, number, number] => [c, 182 + i * 22, 200 + i * 22]))] }],
+      ID,
+    );
+    expect(searchIndex(buildIndex(phone), presetRegex("phone")!).length).toBe(1);
   });
 
   it("狭い空白は空白として入り、電話番号のプリセットで見つかる", () => {
@@ -269,12 +288,65 @@ describe("インクで読み違いを直す", () => {
         ]),
       ).chars.join(""),
     ).toBe("71");
+    // 別の単語のインクを、自分の二重読みの根拠にしない。
+    const [near] = snapToInk(
+      [{ words: [w, ocrWord([["1", 142, 152]])] }],
+      inkImage([[100, 120], [128, 140], [142, 152]]),
+    );
+    expect(near.words.map((x) => x.symbols.map((s) => s.text).join(""))).toEqual(["71", "1"]);
+    // 後ろに単位があっても同じ（「円」のインクは数字の分に数えない）
+    const yen = ocrWord([
+      ["7", 100, 118],
+      ["7", 104, 122],
+      ["1", 128, 140],
+      ["円", 146, 176],
+    ]);
+    expect(
+      ocrToPageText(
+        [{ words: [yen] }],
+        ID,
+        inkImage([
+          [100, 120],
+          [130, 138],
+          [146, 176],
+        ]),
+      ).chars.join(""),
+    ).toBe("71円");
+    // 幅の狭い「1」が多くても、ふつうの幅の「7」を2文字分に数えない
+    const ones = ocrWord([
+      ["7", 100, 118],
+      ["7", 104, 122],
+      ["1", 128, 140],
+      ["1", 150, 162],
+    ]);
+    expect(
+      ocrToPageText(
+        [{ words: [ones] }],
+        ID,
+        inkImage([
+          [100, 120],
+          [128, 140],
+          [150, 162],
+        ]),
+      ).chars.join(""),
+    ).toBe("711");
     // 「77」がくっついて1つのまとまりになったとき
     const pair = ocrWord([
       ["7", 100, 120],
       ["7", 121, 142],
     ]);
     expect(ocrToPageText([{ words: [pair] }], ID, inkImage([[100, 142]])).chars.join("")).toBe("77");
+  });
+
+  it("薄い数字の一部だけ濃くても、字形全体の高さを保つ", () => {
+    const img = inkImage([[100, 120], [126, 146]]);
+    for (let i = 0; i < img.data.length; i++) if (img.data[i] === 0) img.data[i] = 190;
+    for (let y = 136; y < 140; y++) for (let x = 100; x < 104; x++) img.data[y * img.width + x] = 0;
+    const [line] = snapToInk([{ words: [ocrWord([["1", 100, 120], ["2", 126, 146]])] }], img);
+    for (const symbol of line.words[0].symbols) {
+      expect(symbol.bbox.y0).toBeLessThan(105);
+      expect(symbol.bbox.y1).toBeGreaterThan(135);
+    }
   });
 
   it("「%」を「9%」と読んだとき（「103.7%」が「103.79%」に）は、余分な数字を除く", () => {
@@ -351,6 +423,43 @@ describe("インクで読み違いを直す", () => {
     expect(ocrToPageText([{ words: [w] }], ID, inkImage(digits, { slashes: [[140, 156]] })).chars.join("")).toBe("10/15");
     // 上の横棒がある本当の「7」はそのまま
     expect(ocrToPageText([{ words: [w] }], ID, inkImage([...digits, [140, 156]])).chars.join("")).toBe("10715");
+  });
+
+  it("同じインクを違う2文字に読んだ単語（「10/15」を「10/715」）は、インクが対応したとみなさない（読み直す）", () => {
+    const w = ocrWord([
+      ["1", 100, 108],
+      ["0", 115, 135],
+      ["/", 140, 156],
+      ["7", 162, 170],
+      ["1", 176, 196],
+      ["5", 190, 196],
+    ]);
+    const digits: [number, number][] = [
+      [100, 108],
+      [115, 135],
+      [162, 170],
+      [176, 196],
+    ];
+    const [l] = snapToInk([{ words: [w] }], inkImage(digits, { slashes: [[140, 156]] }));
+    expect(l.words[0].symbols.map((s) => s.text).join("")).toBe("10/71");
+    expect(l.words[0].inkMatched).toBe(false);
+  });
+
+  it("くっついた数字のまとまり（「53466」の「46」）があっても、数字の数だけインクがあれば最後の数字を除かない", () => {
+    const w = ocrWord([
+      ["5", 100, 118],
+      ["3", 122, 140],
+      ["4", 144, 180],
+      ["6", 184, 202],
+      ["6", 201, 202],
+    ]);
+    const ink = inkImage([
+      [100, 118],
+      [122, 140],
+      [144, 180],
+      [184, 202],
+    ]);
+    expect(ocrToPageText([{ words: [w] }], ID, ink).chars.join("")).toBe("53466");
   });
 
   it("小数点そのものを「1」と読んだとき（「11.7」が「1117」に）は、点だけのインクなら小数点に直す", () => {
