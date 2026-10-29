@@ -113,9 +113,10 @@ async function handle(req: WorkerRequest & { id: number }) {
       return;
     }
     case "ocrImage": {
-      const r = ocrImage(req.docId, req.page, req.rotate, req.dpi, !!req.jpeg, req.blank, !!req.original);
+      const r = ocrImage(req.docId, req.page, req.rotate, req.dpi, !!req.jpeg, req.blank, !!req.original, !!req.alsoOriginal);
       const transfer = [r.png.buffer as ArrayBuffer, r.gray.buffer as ArrayBuffer];
       if (r.jpeg) transfer.push(r.jpeg.buffer as ArrayBuffer);
+      if (r.original) transfer.push(r.original.png.buffer as ArrayBuffer, r.original.gray.buffer as ArrayBuffer);
       post({ type: "result", id: req.id, ok: true, value: r }, transfer);
       return;
     }
@@ -232,7 +233,7 @@ async function render(docId: string, page: number, scale: number): Promise<Rende
  * 文字認識用に、ページを高解像度のグレースケール画像にする（向きを変えて読むときは回転して描く）。
  * blank にはPDFの文字がある範囲を入れる：白く消して、画像や図の中の文字だけを読む（クラウドにもPDFの文字は送らない）
  */
-function ocrImage(docId: string, page: number, rotate: number, dpi: number, withJpeg: boolean, blank?: number[], original = false): OcrImageResult {
+function ocrImage(docId: string, page: number, rotate: number, dpi: number, withJpeg: boolean, blank?: number[], original = false, alsoOriginal = false): OcrImageResult {
   const d = docs.get(docId);
   if (!d) throw new Error("document is not open");
   const p = d.doc.loadPage(page);
@@ -255,6 +256,7 @@ function ocrImage(docId: string, page: number, rotate: number, dpi: number, with
   // 色の付いたセルや罫線を消して、読みやすい白黒の濃淡にする
   const stride = pix.getStride();
   let gray: Uint8Array;
+  let originalGray: Uint8Array | undefined;
   if (original) {
     gray = new Uint8Array(w * h);
     for (let y = 0; y < h; y++)
@@ -262,17 +264,12 @@ function ocrImage(docId: string, page: number, rotate: number, dpi: number, with
         const i = y * stride + x * 3;
         gray[y * w + x] = Math.round(0.299 * rgb[i] + 0.587 * rgb[i + 1] + 0.114 * rgb[i + 2]);
       }
-  } else gray = prepareOcrImage(rgb, w, h, stride, k * 72);
+  } else gray = prepareOcrImage(rgb, w, h, stride, k * 72, alsoOriginal ? (originalGray = new Uint8Array(w * h)) : undefined);
   const jpeg = withJpeg ? pix.asJPEG(85).slice() : undefined;
   pix.destroy();
-  const out = new mupdf.Pixmap(mupdf.ColorSpace.DeviceGray, [0, 0, w, h], false);
-  // 画素の配列は WASM のメモリを直接見ているので、取り出したらすぐ書く（途中でメモリが増えると見えなくなる）
-  const dst = out.getPixels();
-  const os = out.getStride();
-  for (let y = 0; y < h; y++) dst.set(gray.subarray(y * w, y * w + w), y * os);
-  const png = out.asPNG().slice();
-  out.destroy();
-  return { png, gray, width: w, height: h, toPage, jpeg };
+  const png = grayPng(gray, w, h);
+  const paired = originalGray ? { png: grayPng(originalGray, w, h), gray: originalGray } : undefined;
+  return { png, gray, width: w, height: h, toPage, jpeg, original: paired };
 }
 
 function grayPng(data: Uint8Array, w: number, h: number): Uint8Array {

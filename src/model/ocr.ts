@@ -272,6 +272,9 @@ async function run(job: Job) {
 
 interface Reading {
   lines: OcrLine[];
+  /** 元の認識に使った画像。別の行分割で読むときにもそのまま使う */
+  png: Uint8Array;
+  original?: { png: Uint8Array; gray: Uint8Array };
   toPage: Matrix6;
   image: GrayImage;
   score: { good: number; total: number };
@@ -295,10 +298,10 @@ async function recognizeLines(worker: OcrWorker, png: Uint8Array): Promise<OcrLi
   return lines;
 }
 
-async function read(worker: OcrWorker, docId: string, page: number, rotate: number, dpi: number, blank?: number[], original = false): Promise<Reading> {
-  const img = await engine.ocrImage(docId, page, rotate, dpi, 7, false, blank, original);
+async function read(worker: OcrWorker, docId: string, page: number, rotate: number, dpi: number, blank?: number[], original = false, alsoOriginal = false): Promise<Reading> {
+  const img = await engine.ocrImage(docId, page, rotate, dpi, 7, false, blank, original, alsoOriginal);
   const lines = await recognizeLines(worker, img.png);
-  return { lines, toPage: img.toPage, image: { data: img.gray, width: img.width, height: img.height }, score: orientationScore(lines), rotate };
+  return { lines, png: img.png, original: img.original, toPage: img.toPage, image: { data: img.gray, width: img.width, height: img.height }, score: orientationScore(lines), rotate };
 }
 
 /** 1ページで読み直す行の数の上限（写真の模様などで多くなりすぎたときに時間がかからないように） */
@@ -350,7 +353,7 @@ const PROBE_DPI = 160;
  */
 async function recognizePage(worker: OcrWorker, job: Job): Promise<PageText> {
   const { docId, page } = job;
-  let best = await read(worker, docId, page, 0, 300, job.blank);
+  let best = await read(worker, docId, page, 0, 300, job.blank, false, true);
   if (job.mode === "page" && !readsWell(best.score)) {
     const probe = async (r: number) => ({ r, s: (await read(worker, docId, page, r, PROBE_DPI)).score });
     let top = { r: 0, s: best.score };
@@ -363,7 +366,7 @@ async function recognizePage(worker: OcrWorker, job: Job): Promise<PageText> {
       if (ratio(p.s) > ratio(top.s)) top = p;
     }
     if (top.r !== 0 && top.s.good >= 8 && ratio(top.s) >= Math.max(0.25, ratio(best.score) * 2)) {
-      const turned = await read(worker, docId, page, top.r, 300);
+      const turned = await read(worker, docId, page, top.r, 300, undefined, false, !job.blank?.length);
       if (turned.score.good > best.score.good) best = turned;
     }
   }
@@ -374,7 +377,12 @@ async function recognizePage(worker: OcrWorker, job: Job): Promise<PageText> {
   try {
     // 前処理で薄い文字や白抜き文字が消えた場合に備え、同じ向きの元画像も読み、
     // 確かな数字の候補だけを先の文字層に足す。元画像は外部へ送らない。
-    const raw = await read(worker, docId, page, best.rotate, 300, job.blank, true);
+    let raw: Reading;
+    if (best.original) {
+      const lines = await recognizeLines(worker, best.original.png);
+      raw = { ...best, lines, png: best.original.png, original: undefined, image: { ...best.image, data: best.original.gray }, score: orientationScore(lines) };
+      best.original = undefined;
+    } else raw = await read(worker, docId, page, best.rotate, 300, job.blank, true);
     result = supplementDigits(result, await fillUnread(worker, raw), raw.toPage, raw.image);
   } catch {
     toast({ message: "元画像の追加読み取りに失敗したため、最初の文字認識結果を表示します。見逃しを確認してください。", tone: "warn", duration: 9000 });
@@ -382,8 +390,7 @@ async function recognizePage(worker: OcrWorker, job: Job): Promise<PageText> {
   // 表や図では離れた数字を文章の行として扱うと見逃すため、散在する文字向けの分割でも読み、候補を追加する。
   try {
     await worker.setParameters({ tessedit_pageseg_mode: "11" as never });
-    const png = await engine.grayPng(new Uint8Array(sparseImage.data), sparseImage.width, sparseImage.height);
-    const sparse: Reading = { ...best, lines: await recognizeLines(worker, png), image: sparseImage };
+    const sparse: Reading = { ...best, lines: await recognizeLines(worker, best.png), image: sparseImage };
     result = supplementDigits(result, await fillUnread(worker, sparse, true), sparse.toPage, sparse.image);
   } catch {
     toast({ message: "図表の追加読み取りを完了できませんでした。見逃しを確認してください。", tone: "warn", duration: 9000 });

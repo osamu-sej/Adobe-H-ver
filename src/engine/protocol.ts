@@ -51,6 +51,8 @@ export interface OcrImageResult {
   toPage: [number, number, number, number, number, number];
   /** 整える前のカラーの画像（JPEG）。高精度の文字認識（クラウド）に送るときだけ作る */
   jpeg?: Uint8Array;
+  /** 同じ描画から作った元画像の濃淡（必要な場合だけ） */
+  original?: { png: Uint8Array; gray: Uint8Array };
 }
 
 export interface ExportMask extends Rect {
@@ -174,6 +176,8 @@ export type WorkerRequest =
       jpeg?: boolean;
       /** 前処理せず、元画像の濃淡で読み直す */
       original?: boolean;
+      /** 前処理画像と元画像の両方を同じ描画から作る */
+      alsoOriginal?: boolean;
       /** 白く消してから読む範囲（PDFの文字がある所。元ページ空間の [x0, y0, x1, y1] × n） */
       blank?: number[];
     }
