@@ -1,9 +1,10 @@
 import { blurMargin, drawLabel, isOpaqueFill, renderPatch, resolveStrength, type PixelSource } from "../fx/effects";
-import { clampRect } from "../model/geometry";
+import { clampRect, maskBounds, maskCorners } from "../model/geometry";
 import type { Level, MaskStyle, Rect, Rot } from "../model/types";
 import type { PageBitmap } from "./bitmaps";
 
 export interface PaintMask extends Rect {
+  angle?: number;
   style: MaskStyle;
   level: Level;
   strength: number | null;
@@ -39,12 +40,13 @@ function scratch2d() {
 const patchCache = new WeakMap<ImageBitmap, Map<string, HTMLCanvasElement>>();
 
 /** マスク1つ分のモザイク／ぼかし／塗りの画像（表示中のページ画像から作る。書き出しと同じ処理） */
-function maskPatch(bmp: PageBitmap, m: PaintMask): HTMLCanvasElement | null {
-  const strength = resolveStrength(m);
-  const key = `${m.x.toFixed(2)},${m.y.toFixed(2)},${m.w.toFixed(2)},${m.h.toFixed(2)},${m.style},${strength.toFixed(2)},${m.color},${m.opacity.toFixed(2)},${m.label ?? ""}`;
+function maskPatch(bmp: PageBitmap, m: PaintMask, shape: PaintMask = m): HTMLCanvasElement | null {
+  const strength = resolveStrength(shape);
+  const key = `${m.x.toFixed(2)},${m.y.toFixed(2)},${m.w.toFixed(2)},${m.h.toFixed(2)},${m.style},${strength.toFixed(2)},${m.color},${m.opacity.toFixed(2)},${m.label ?? ""},${shape.x},${shape.y},${shape.w},${shape.h},${shape.angle ?? 0}`;
   let cache = patchCache.get(bmp.bitmap);
   if (!cache) patchCache.set(bmp.bitmap, (cache = new Map()));
-  const hit = cache.get(key);
+  // 回転中は毎フレーム異なる画像になるため、キャッシュに積み続けない。
+  const hit = shape.angle ? undefined : cache.get(key);
   if (hit) return hit;
 
   const s = bmp.scale;
@@ -74,9 +76,18 @@ function maskPatch(bmp: PageBitmap, m: PaintMask): HTMLCanvasElement | null {
   c.height = patch.height;
   const ctx = c.getContext("2d")!;
   ctx.putImageData(new ImageData(new Uint8ClampedArray(patch.data), patch.width, patch.height), 0, 0);
-  if (m.label) drawLabel(ctx, 0, 0, patch.width, patch.height, m.label, m.style, m);
-  if (cache.size > 600) cache.clear();
-  cache.set(key, c);
+  if (m.label) {
+    ctx.save();
+    ctx.translate((shape.x + shape.w / 2 - m.x) * patch.width / m.w, (shape.y + shape.h / 2 - m.y) * patch.height / m.h);
+    ctx.rotate((shape.angle ?? 0) * Math.PI / 180);
+    const w = shape.w * patch.width / m.w, h = shape.h * patch.height / m.h;
+    drawLabel(ctx, -w / 2, -h / 2, w, h, m.label, m.style, m);
+    ctx.restore();
+  }
+  if (!shape.angle) {
+    if (cache.size > 600) cache.clear();
+    cache.set(key, c);
+  }
   return c;
 }
 
@@ -97,18 +108,29 @@ export function paintMasks(
   ctx.setTransform(...baseToView(rot, pageW, pageH, bmp.scale));
   ctx.imageSmoothingEnabled = false;
   for (const raw of masks) {
-    const m = { ...raw, ...clampRect(raw, pageW, pageH) };
+    const m = { ...raw, ...clampRect(maskBounds(raw), pageW, pageH) };
     if (m.w <= 0 || m.h <= 0) continue;
+    ctx.save();
+    if (raw.angle) {
+      const points = maskCorners(raw);
+      ctx.beginPath();
+      ctx.moveTo(...points[0]);
+      for (const p of points.slice(1)) ctx.lineTo(...p);
+      ctx.closePath();
+      ctx.clip();
+    }
     if (m.style === "fill" && !m.label) {
       // ページ画像の上に重ねるキャンバスなので、透ける塗りもそのまま半透明で塗れば書き出しと同じ見た目になる
       ctx.globalAlpha = m.opacity;
       ctx.fillStyle = m.color;
       ctx.fillRect(m.x, m.y, m.w, m.h);
       ctx.globalAlpha = 1;
+      ctx.restore();
       continue;
     }
-    const patch = maskPatch(bmp, m);
+    const patch = maskPatch(bmp, m, raw.angle ? raw : m);
     if (patch) ctx.drawImage(patch, m.x, m.y, m.w, m.h);
+    ctx.restore();
   }
 }
 

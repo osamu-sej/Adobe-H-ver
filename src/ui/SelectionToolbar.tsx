@@ -1,7 +1,10 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { MAX_STRENGTH, MIN_STRENGTH, resolveStrength } from "../fx/effects";
 import { suggestForSelection } from "../model/actions";
+import { normalizeAngle } from "../model/geometry";
+import { textUnder } from "../model/text";
+import { getText } from "../model/texts";
 import { beginGesture, deleteMasks, endGesture, updateGesture, updateMasks, useStore } from "../model/store";
 import { LEVEL_HINT, LEVEL_LABEL, LEVEL_ORDER, STYLE_LABEL, STYLE_ORDER, type MaskStyle } from "../model/types";
 import { FillPopover, FillSwatch } from "./FillPicker";
@@ -15,6 +18,36 @@ export const STYLE_ICON: Record<MaskStyle, (p: { size?: number }) => React.React
 };
 
 export const LABEL_PRESETS = ["非開示", "個人情報", "黒塗り", "マスキング済"];
+
+function AngleInput({ id, angle }: { id: string; angle: number }) {
+  const [value, setValue] = useState(String(normalizeAngle(angle)));
+  const [editing, setEditing] = useState(false);
+  const skipBlur = useRef(false);
+  useEffect(() => { if (!editing) setValue(String(normalizeAngle(angle))); }, [angle, editing]);
+  const apply = (raw: string) => {
+    const v = Number(raw);
+    if (!raw.trim() || !Number.isFinite(v)) { setValue(String(normalizeAngle(angle))); return; }
+    const next = normalizeAngle(v);
+    if (next !== angle) updateMasks([id], (mask) => {
+      const rotated = { ...mask, angle: next };
+      const idx = getText(mask.docId, mask.page);
+      return { angle: next, text: idx ? textUnder(idx, rotated) || undefined : undefined };
+    });
+    setValue(String(next));
+  };
+  return <label className="rotation-input" title="角度を入力してEnter。上下キーで0.1度ずつ調整">
+    回転 <input type="text" inputMode="decimal" aria-label="マスクの回転角度" value={value}
+      onFocus={() => setEditing(true)} onChange={(e) => setValue(e.target.value)}
+      onBlur={() => { if (!skipBlur.current) apply(value); skipBlur.current = false; setEditing(false); }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") { apply(value); skipBlur.current = true; e.currentTarget.blur(); }
+        else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+          e.preventDefault();
+          apply(String((Number(value) || 0) + (e.key === "ArrowUp" ? 0.1 : -0.1)));
+        } else if (e.key === "Escape") { setValue(String(normalizeAngle(angle))); skipBlur.current = true; e.currentTarget.blur(); e.stopPropagation(); }
+      }} />°
+  </label>;
+}
 
 export function SelectionToolbar({ left, top, below }: { left: number; top: number; below: boolean }) {
   const selected = useStore(useShallow((s) => s.masks.filter((m) => s.selection.includes(m.id))));
@@ -46,6 +79,7 @@ export function SelectionToolbar({ left, top, below }: { left: number; top: numb
       onContextMenu={(e) => e.stopPropagation()}
     >
       <span className="sel-count">{selected.length}件</span>
+      {selected.length === 1 && <AngleInput key={selected[0].id} id={selected[0].id} angle={selected[0].angle ?? 0} />}
       <div className="seg">
         {STYLE_ORDER.map((s, i) => {
           const Icon = STYLE_ICON[s];

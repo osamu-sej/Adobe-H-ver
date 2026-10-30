@@ -736,6 +736,31 @@ kbd {
 .h-s { left: 50%; top: 100%; cursor: ns-resize; }
 .h-sw { left: 0; top: 100%; cursor: nesw-resize; }
 .h-w { left: 0; top: 50%; cursor: ew-resize; }
+.rotate-stem {
+  position: absolute;
+  left: 50%;
+  top: -27px;
+  width: 1.5px;
+  height: 27px;
+  background: var(--accent);
+  cursor: grab;
+  z-index: 3;
+}
+.rotate-handle {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 13px;
+  height: 13px;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  background: white;
+  cursor: grab;
+  touch-action: none;
+}
+.rotation-input { display: flex; align-items: center; gap: 3px; white-space: nowrap; font-size: 11px; }
+.rotation-input input { width: 58px; padding: 3px; border: 1px solid #d5d6dd; border-radius: 4px; font: inherit; }
 
 .hover-token {
   position: absolute;

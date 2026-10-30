@@ -191,7 +191,7 @@ const Thumb = memo(function Thumb({
         {!bmp &&
           masks.map((m) => {
             const r = toViewRect(m, rot, info.w, info.h);
-            return <div key={m.id} className="thumb-mask" style={{ left: r.x * z, top: r.y * z, width: r.w * z, height: r.h * z }} />;
+            return <div key={m.id} className="thumb-mask" style={{ left: r.x * z, top: r.y * z, width: r.w * z, height: r.h * z, transform: `rotate(${m.angle ?? 0}deg)` }} />;
           })}
         <div className="thumb-actions" onClick={(e) => e.stopPropagation()}>
           <button className="icon-btn xs" title="左に回転" onClick={() => rotatePages(docId, [page], -90)}>

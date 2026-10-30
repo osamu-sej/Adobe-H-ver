@@ -1,4 +1,5 @@
 import { normalize, DASH_CHARS, isDigit } from "./normalize";
+import { maskContains, type OrientedRect } from "./geometry";
 import type { PageText, Rect, SnapMode } from "./types";
 
 /**
@@ -222,14 +223,14 @@ export function rangeRects(idx: TextIndex, s: number, e: number, pad = 0): Rect[
 }
 
 /** 矩形の下にある文字（中心が入っているもの）。自由範囲のマスクでも同じ値の検出・検証に使う */
-export function textUnder(idx: TextIndex, r: Rect): string {
+export function textUnder(idx: TextIndex, r: OrientedRect): string {
   let out = "";
   let line = -1;
   for (let i = 0; i < idx.text.chars.length; i++) {
     const c = charRect(idx.text, i);
     const cx = c.x + c.w / 2;
     const cy = c.y + c.h / 2;
-    if (cx < r.x || cx > r.x + r.w || cy < r.y || cy > r.y + r.h) continue;
+    if (!maskContains(r, cx, cy)) continue;
     if (line >= 0 && idx.text.lines[i] !== line) out += " ";
     line = idx.text.lines[i];
     out += idx.norm[i];

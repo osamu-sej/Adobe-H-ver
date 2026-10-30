@@ -15,7 +15,7 @@ import {
   updateMasks,
   useStore,
 } from "../model/store";
-import { clampRect, normRect, toBasePoint, toBaseRect, toViewRect, viewSize } from "../model/geometry";
+import { clampRect, maskBounds, normalizeAngle, normRect, rotatePoint, toBasePoint, toBaseRect, toViewRect, viewSize } from "../model/geometry";
 import { maskFrom, suggestSameValues, suggestForSelection } from "../model/actions";
 import { rangeRects, rangeText, snapToRange, textUnder, tokenAt, type SnapResult } from "../model/text";
 import { ocrJobMode, ocrSource, ocrState } from "../model/ocr";
@@ -30,7 +30,8 @@ import { SelectionToolbar, STYLE_ICON } from "./SelectionToolbar";
 type Drag =
   | { kind: "create"; start: [number, number]; cur: [number, number]; sx: number; sy: number; moved: boolean; alt: boolean }
   | { kind: "move"; ids: string[]; start: [number, number]; orig: Map<string, Rect>; moved: boolean }
-  | { kind: "resize"; id: string; handle: string; orig: Rect; moved: boolean }
+  | { kind: "resize"; id: string; handle: string; orig: Rect; angle: number; moved: boolean }
+  | { kind: "rotate"; id: string; center: [number, number]; start: number; angle: number; moved: boolean }
   | { kind: "marquee"; start: [number, number]; cur: [number, number]; base: string[] };
 
 interface Hover {
@@ -162,9 +163,15 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
       const id = box.dataset.maskId!;
       const m = st.masks.find((x) => x.id === id);
       if (!m) return;
+      if (el.closest("[data-rotate]")) {
+        select([id]);
+        const center: [number, number] = [m.x + m.w / 2, m.y + m.h / 2];
+        setDragBoth({ kind: "rotate", id, center, start: Math.atan2(p[1] - center[1], p[0] - center[0]), angle: m.angle ?? 0, moved: false });
+        return;
+      }
       if (el.dataset.handle) {
         select(st.selection.includes(id) ? st.selection : [id]);
-        setDragBoth({ kind: "resize", id, handle: el.dataset.handle, orig: { x: m.x, y: m.y, w: m.w, h: m.h }, moved: false });
+        setDragBoth({ kind: "resize", id, handle: el.dataset.handle, orig: { x: m.x, y: m.y, w: m.w, h: m.h }, angle: m.angle ?? 0, moved: false });
         return;
       }
       let sel = st.selection;
@@ -230,9 +237,27 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
           if (!o) return m;
           const x = Math.max(-o.w / 2, Math.min(info.w - o.w / 2, o.x + dx));
           const y = Math.max(-o.h / 2, Math.min(info.h - o.h / 2, o.y + dy));
-          return { ...m, x, y };
+          const next = { ...m, x, y };
+          return m.angle ? { ...next, text: idx ? textUnder(idx, next) || undefined : undefined } : next;
         }),
       }));
+      return;
+    }
+    if (d.kind === "rotate") {
+      const a = Math.atan2(p[1] - d.center[1], p[0] - d.center[0]);
+      let angle = d.angle + (a - d.start) * 180 / Math.PI;
+      if (e.shiftKey) angle = Math.round(angle / 15) * 15;
+      angle = normalizeAngle(angle);
+      if (!d.moved && Math.abs(angle - d.angle) < 0.1) return;
+      if (!d.moved) {
+        beginGesture();
+        dragRef.current = { ...d, moved: true };
+      }
+      updateGesture((s) => ({ masks: s.masks.map((m) => {
+        if (m.id !== d.id) return m;
+        const next = { ...m, angle };
+        return { ...next, text: idx ? textUnder(idx, next) || undefined : undefined };
+      }) }));
       return;
     }
     if (d.kind === "resize") {
@@ -242,8 +267,8 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
       }
       const v = toViewRect(d.orig, rot, info.w, info.h);
       const r = overlayRef.current!.getBoundingClientRect();
-      const u = (e.clientX - r.left) / zoom;
-      const w = (e.clientY - r.top) / zoom;
+      const cx = v.x + v.w / 2, cy = v.y + v.h / 2;
+      const [u, w] = rotatePoint((e.clientX - r.left) / zoom, (e.clientY - r.top) / zoom, cx, cy, -d.angle);
       let x0 = v.x;
       let y0 = v.y;
       let x1 = v.x + v.w;
@@ -255,8 +280,15 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
       const nv = normRect(x0, y0, x1, y1);
       nv.w = Math.max(2, nv.w);
       nv.h = Math.max(2, nv.h);
-      const nb = clampRect(toBaseRect(nv, rot, info.w, info.h), info.w, info.h);
-      updateGesture((s) => ({ masks: s.masks.map((m) => (m.id === d.id ? { ...m, ...nb } : m)) }));
+      const [ncx, ncy] = rotatePoint(nv.x + nv.w / 2, nv.y + nv.h / 2, cx, cy, d.angle);
+      nv.x = ncx - nv.w / 2; nv.y = ncy - nv.h / 2;
+      const base = toBaseRect(nv, rot, info.w, info.h);
+      const nb = d.angle ? base : clampRect(base, info.w, info.h);
+      updateGesture((s) => ({ masks: s.masks.map((m) => {
+        if (m.id !== d.id) return m;
+        const next = { ...m, ...nb };
+        return m.angle ? { ...next, text: idx ? textUnder(idx, next) || undefined : undefined } : next;
+      }) }));
       return;
     }
     if (d.kind === "marquee") {
@@ -269,10 +301,10 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
           (m) =>
             m.docId === docId &&
             m.page === page &&
-            m.x < area.x + area.w &&
-            area.x < m.x + m.w &&
-            m.y < area.y + area.h &&
-            area.y < m.y + m.h,
+            maskBounds(m).x < area.x + area.w &&
+            area.x < maskBounds(m).x + maskBounds(m).w &&
+            maskBounds(m).y < area.y + area.h &&
+            area.y < maskBounds(m).y + maskBounds(m).h,
         )
         .map((m) => m.id);
       select([...new Set([...d.base, ...inside])]);
@@ -283,7 +315,7 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
     const d = dragRef.current;
     setDragBoth(null);
     if (!d) return;
-    if (d.kind === "move" || d.kind === "resize") {
+    if (d.kind === "move" || d.kind === "resize" || d.kind === "rotate") {
       if (d.moved) endGesture();
       return;
     }
@@ -344,7 +376,7 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
   };
 
   const onPointerCancel = () => {
-    if (dragRef.current?.kind === "move" || dragRef.current?.kind === "resize") cancelGesture();
+    if (dragRef.current?.kind === "move" || dragRef.current?.kind === "resize" || dragRef.current?.kind === "rotate") cancelGesture();
     setDragBoth(null);
     setPreview([]);
   };
@@ -405,13 +437,13 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
   const showToolbar = toolbarOn && !drag && selectedHere.some((m) => m.id === anchorId);
   let toolbarPos: { left: number; top: number; below: boolean } | null = null;
   if (showToolbar) {
-    const vs = selectedHere.map(toView);
+    const vs = selectedHere.map((m) => toView(maskBounds(m)));
     const left = Math.min(...vs.map((v) => v.left));
     const right = Math.max(...vs.map((v) => v.left + v.width));
     const top = Math.min(...vs.map((v) => v.top));
     const bottom = Math.max(...vs.map((v) => v.top + v.height));
     const below = top < 56;
-    toolbarPos = { left: Math.max(150, Math.min(cssW - 150, (left + right) / 2)), top: below ? bottom + 10 : top - 10, below };
+    toolbarPos = { left: Math.max(150, Math.min(cssW - 150, (left + right) / 2)), top: below ? bottom + 10 : top - 42, below };
   }
   const createRect = drag?.kind === "create" && drag.moved ? toView(normRect(drag.start[0], drag.start[1], drag.cur[0], drag.cur[1])) : null;
   const marqueeRect = drag?.kind === "marquee" ? toView(normRect(drag.start[0], drag.start[1], drag.cur[0], drag.cur[1])) : null;
@@ -492,10 +524,11 @@ const MaskBox = memo(function MaskBox({
   return (
     <div
       className={"mask-box" + (selected ? " selected" : "") + (peek ? " peek" : "") + ` st-${mask.style}`}
-      style={style}
+      style={{ ...style, transform: `rotate(${mask.angle ?? 0}deg)` }}
       data-mask-id={mask.id}
     >
       {selected && HANDLES.map((h) => <span key={h} className={`handle h-${h}`} data-handle={h} />)}
+      {selected && <span className="rotate-stem" data-rotate="true"><span className="rotate-handle" data-rotate="true" title="ドラッグで回転（Shiftで15度刻み）" /></span>}
     </div>
   );
 });

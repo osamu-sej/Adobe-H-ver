@@ -1,6 +1,6 @@
 import { engine } from "../engine/client";
 import { pageCache, thumbCache } from "../render/bitmaps";
-import { clampRect, overlapArea } from "./geometry";
+import { clampRect, maskContains, maskOverlapArea } from "./geometry";
 import { checkRestore } from "./autosave";
 import { isMeaningfulValue } from "./normalize";
 import {
@@ -127,11 +127,8 @@ export function isCovered(masks: Mask[], docId: string, page: number, rect: Rect
     (m) =>
       m.docId === docId &&
       m.page === page &&
-      cx >= m.x &&
-      cx <= m.x + m.w &&
-      cy >= m.y &&
-      cy <= m.y + m.h &&
-      overlapArea(m, rect) >= area * 0.6,
+      maskContains(m, cx, cy) &&
+      maskOverlapArea(m, rect) >= area * 0.6,
   );
 }
 

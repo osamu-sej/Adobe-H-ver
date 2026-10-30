@@ -1,6 +1,6 @@
 import type * as M from "mupdf";
 import { drawLabel, hexToRgb, isOpaqueFill, renderPatch, type FillSpec, type Patch, type PixelSource } from "../fx/effects";
-import { inflate, overlapArea, toViewRect } from "../model/geometry";
+import { inflate, maskBounds, maskCorners, maskOverlapArea, toViewRect, type OrientedRect, type Point } from "../model/geometry";
 import { countStandalone, isMeaningfulValue, normalize } from "../model/normalize";
 import type { Rect, Rot } from "../model/types";
 import type {
@@ -25,7 +25,7 @@ interface PageMap {
   srcPage: number;
   rot: Rot;
   /** 書き出し後のページ空間でのマスク位置 */
-  masks: Rect[];
+  masks: OrientedRect[];
   texts: string[];
 }
 
@@ -157,7 +157,7 @@ async function processDoc(
       docId: ed.docId,
       srcPage: src,
       rot,
-      masks: ms.map((m) => toViewRect(m, rot, size.w, size.h)),
+      masks: ms.map((m) => ({ ...toViewRect(m, rot, size.w, size.h), angle: m.angle })),
       texts: ms.map((m) => m.text ?? "").filter(Boolean),
     };
   });
@@ -169,10 +169,11 @@ async function redactPage(mupdf: Mupdf, doc: M.PDFDocument, pageIndex: number, m
   const [x0, y0] = b;
   const pw = b[2] - b[0];
   const ph = b[3] - b[1];
+  const rotated = masks.some((m) => !!m.angle);
 
   // 1) 墨消し前のページ画像からモザイク・ぼかし（と透ける塗り）を作る
   let src: PixelSource | null = null;
-  if (masks.some((m) => m.style !== "fill" || !isOpaqueFill(m))) {
+  if ((!keepText && rotated) || masks.some((m) => m.style !== "fill" || !isOpaqueFill(m))) {
     const k = Math.min(SAMPLE_SCALE, Math.sqrt(30_000_000 / Math.max(1, pw * ph)));
     const pix = page.toPixmap(mupdf.Matrix.scale(k, k), mupdf.ColorSpace.DeviceRGB, false, true);
     src = {
@@ -187,14 +188,14 @@ async function redactPage(mupdf: Mupdf, doc: M.PDFDocument, pageIndex: number, m
     pix.destroy();
   }
 
-  type Overlay = { rect: Rect; fill: [number, number, number] } | { rect: Rect; image: M.PDFObject };
+  type Overlay = ({ rect: Rect; fill: [number, number, number] } | { rect: Rect; image: M.PDFObject }) & { shape: ExportMask };
   const overlays: Overlay[] = [];
   for (const m of masks) {
-    const rect = clipRect(m, pw, ph);
+    const rect = clipRect(maskBounds(m), pw, ph);
     if (rect.w <= 0 || rect.h <= 0) continue;
     // 不透明な塗りは図形で塗る。透ける塗りは、元の見た目に色を重ねた画像にする（下の文字を消しても透けて見える）
     if (m.style === "fill" && isOpaqueFill(m) && !m.label) {
-      overlays.push({ rect, fill: hexToRgb(m.color) });
+      overlays.push({ rect, shape: m, fill: hexToRgb(m.color) });
       continue;
     }
     const outScale =
@@ -202,26 +203,46 @@ async function redactPage(mupdf: Mupdf, doc: M.PDFDocument, pageIndex: number, m
         ? Math.min(src.scale, Math.sqrt(PATCH_MAX_PIXELS / (rect.w * rect.h)))
         : Math.min(4, Math.sqrt(PATCH_MAX_PIXELS / (rect.w * rect.h)));
     let patch = renderPatch(src ?? EMPTY_SOURCE, rect, m.style, m.strength, outScale, m);
-    if (m.label) patch = withLabel(patch, m.label, m.style, m);
+    if (m.label) patch = withLabel(patch, m.label, m.style, m, rect);
     const image = new mupdf.Image(pixmapFromPatch(mupdf, patch));
     const ref = doc.addImage(image);
     image.destroy();
     ref.put("Interpolate", false);
-    overlays.push({ rect, image: ref });
+    overlays.push({ rect, shape: m, image: ref });
+  }
+
+  // 図形は一部に触れるとMuPDFが図形全体を削除する。その外側の見た目を保つため、
+  // マスク範囲を画素ごとに消したページ画像を、マスク外だけに重ねる。
+  // 元画像には、クリッピングで隠すだけでなく、隠す領域の画素を残さない。
+  let backdrop: M.PDFObject | undefined;
+  if (!keepText && rotated && src) {
+    const safe = new Uint8ClampedArray(src.data);
+    for (const mask of masks) for (const r of redactionRects(mask, pw, ph)) {
+      const xStart = Math.max(0, Math.floor(r.x * src.scale - src.originX));
+      const xEnd = Math.min(src.width, Math.ceil((r.x + r.w) * src.scale - src.originX));
+      const yStart = Math.max(0, Math.floor(r.y * src.scale - src.originY));
+      const yEnd = Math.min(src.height, Math.ceil((r.y + r.h) * src.scale - src.originY));
+      for (let y = yStart; y < yEnd; y++) safe.fill(255, (y * src.width + xStart) * 3, (y * src.width + xEnd) * 3);
+    }
+    const pixels = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, [0, 0, src.width, src.height], false);
+    const dst = pixels.getPixels(), stride = pixels.getStride();
+    for (let y = 0; y < src.height; y++) dst.set(safe.subarray(y * src.width * 3, (y + 1) * src.width * 3), y * stride);
+    const image = new mupdf.Image(pixels); backdrop = doc.addImage(image); image.destroy(); pixels.destroy();
+    backdrop.put("Interpolate", false);
   }
 
   // 2) 領域内の文字・画像・図形を恒久的に削除する（「見た目だけ重ねる」では消さない）
   if (!keepText) {
     for (const m of masks) {
-      const r = clipRect(m, pw, ph);
-      if (r.w <= 0 || r.h <= 0) continue;
-      const annot = page.createAnnotation("Redact");
-      annot.setRect([x0 + r.x, y0 + r.y, x0 + r.x + r.w, y0 + r.y + r.h]);
+      for (const r of redactionRects(m, pw, ph)) {
+        const annot = page.createAnnotation("Redact");
+        annot.setRect([x0 + r.x, y0 + r.y, x0 + r.x + r.w, y0 + r.y + r.h]);
+      }
     }
     page.applyRedactions(
       false,
       mupdf.PDFPage.REDACT_IMAGE_PIXELS,
-      mupdf.PDFPage.REDACT_LINE_ART_REMOVE_IF_COVERED,
+      rotated ? mupdf.PDFPage.REDACT_LINE_ART_REMOVE_IF_TOUCHED : mupdf.PDFPage.REDACT_LINE_ART_REMOVE_IF_COVERED,
       mupdf.PDFPage.REDACT_TEXT_REMOVE,
     );
   }
@@ -243,21 +264,36 @@ async function redactPage(mupdf: Mupdf, doc: M.PDFDocument, pageIndex: number, m
   }
   const toUser = mupdf.Matrix.invert(page.getTransform());
   let ops = "Q\n";
+  if (backdrop && src) {
+    const name = `KakusuBackdrop${pageIndex}`;
+    xobjects.put(name, backdrop);
+    const m = mupdf.Matrix.concat([src.width / src.scale, 0, 0, -src.height / src.scale, x0 + src.originX / src.scale, y0 + (src.originY + src.height) / src.scale], toUser);
+    const paths = masks.map((mask) => maskCorners(mask).map(([x,y], j) => {
+      const p = apply(toUser, x0 + x, y0 + y);
+      return `${num(p[0])} ${num(p[1])} ${j ? "l" : "m"}`;
+    }).join(" ") + " h").join(" ");
+    const pagePoints = [[x0,y0],[x0+pw,y0],[x0+pw,y0+ph],[x0,y0+ph]].map(([x,y],j) => {
+      const p=apply(toUser,x,y);return `${num(p[0])} ${num(p[1])} ${j ? "l" : "m"}`;
+    }).join(" ");
+    ops += `q ${pagePoints} h ${paths} W* n ${m.map(num).join(" ")} cm /${name} Do Q\n`;
+  }
   overlays.forEach((o, i) => {
     const fx = x0 + o.rect.x;
     const fy = y0 + o.rect.y;
+    const points = maskCorners(o.shape).map(([x, y]) => apply(toUser, x0 + x, y0 + y));
+    const clip = o.shape.angle ? `${points.map(([x, y], j) => `${num(x)} ${num(y)} ${j ? "l" : "m"}`).join(" ")} h W n ` : "";
     if ("fill" in o) {
       const a = apply(toUser, fx, fy);
       const c = apply(toUser, fx + o.rect.w, fy + o.rect.h);
       const ux = Math.min(a[0], c[0]);
       const uy = Math.min(a[1], c[1]);
       const [r, g, b] = o.fill.map((v) => num(v / 255));
-      ops += `q ${r} ${g} ${b} rg ${num(ux)} ${num(uy)} ${num(Math.abs(c[0] - a[0]))} ${num(Math.abs(c[1] - a[1]))} re f Q\n`;
+      ops += `q ${clip}${r} ${g} ${b} rg ${num(ux)} ${num(uy)} ${num(Math.abs(c[0] - a[0]))} ${num(Math.abs(c[1] - a[1]))} re f Q\n`;
     } else {
       const name = `KakusuP${pageIndex}M${i}`;
       xobjects.put(name, o.image);
       const m = mupdf.Matrix.concat([o.rect.w, 0, 0, -o.rect.h, fx, fy + o.rect.h], toUser);
-      ops += `q ${m.map(num).join(" ")} cm /${name} Do Q\n`;
+      ops += `q ${clip}${m.map(num).join(" ")} cm /${name} Do Q\n`;
     }
   });
   const contents = pageObj.get("Contents");
@@ -286,6 +322,33 @@ function clipRect(r: Rect, w: number, h: number): Rect {
   const x1 = Math.min(w, r.x + r.w);
   const y1 = Math.min(h, r.y + r.h);
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/** MuPDFの矩形墨消しで、回転した領域を隙間なく覆う。細い水平帯で余分な削除を抑える。 */
+function redactionRects(mask: OrientedRect, w: number, h: number): Rect[] {
+  if (!mask.angle) {
+    const r = clipRect(mask, w, h);
+    return r.w > 0 && r.h > 0 ? [r] : [];
+  }
+  const corners = maskCorners(mask), bounds = clipRect(maskBounds(mask), w, h);
+  if (bounds.w <= 0 || bounds.h <= 0) return [];
+  const out: Rect[] = [];
+  for (let y0 = bounds.y; y0 < bounds.y + bounds.h; y0 += 0.5) {
+    const y1 = Math.min(bounds.y + bounds.h, y0 + 0.5);
+    const points: Point[] = corners.filter((p) => p[1] >= y0 && p[1] <= y1);
+    for (let i = 0; i < corners.length; i++) {
+      const a = corners[i], b = corners[(i + 1) % corners.length];
+      for (const y of [y0, y1]) if ((a[1] < y && b[1] > y) || (b[1] < y && a[1] > y)) {
+        const t = (y - a[1]) / (b[1] - a[1]);
+        points.push([a[0] + t * (b[0] - a[0]), y]);
+      }
+    }
+    if (!points.length) continue;
+    const x0 = Math.max(0, Math.min(...points.map((p) => p[0])));
+    const x1 = Math.min(w, Math.max(...points.map((p) => p[0])));
+    if (x1 > x0) out.push({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+  }
+  return out;
 }
 
 function apply(m: M.Matrix, x: number, y: number): [number, number] {
@@ -326,13 +389,20 @@ function pixmapFromPatch(mupdf: Mupdf, patch: Patch): M.Pixmap {
   return pix;
 }
 
-function withLabel(patch: Patch, label: string, style: ExportMask["style"], fill: FillSpec): Patch {
+function withLabel(patch: Patch, label: string, style: ExportMask["style"], fill: FillSpec & OrientedRect, rect: Rect): Patch {
   if (typeof OffscreenCanvas === "undefined") return patch;
   const canvas = new OffscreenCanvas(patch.width, patch.height);
   const ctx = canvas.getContext("2d");
   if (!ctx) return patch;
   ctx.putImageData(new ImageData(new Uint8ClampedArray(patch.data), patch.width, patch.height), 0, 0);
-  drawLabel(ctx, 0, 0, patch.width, patch.height, label, style, fill);
+  if (fill.angle) {
+    ctx.save();
+    ctx.translate((fill.x + fill.w / 2 - rect.x) * patch.width / rect.w, (fill.y + fill.h / 2 - rect.y) * patch.height / rect.h);
+    ctx.rotate(fill.angle * Math.PI / 180);
+    const w = fill.w * patch.width / rect.w, h = fill.h * patch.height / rect.h;
+    drawLabel(ctx, -w / 2, -h / 2, w, h, label, style, fill);
+    ctx.restore();
+  } else drawLabel(ctx, 0, 0, patch.width, patch.height, label, style, fill);
   const img = ctx.getImageData(0, 0, patch.width, patch.height);
   return { data: img.data, width: patch.width, height: patch.height };
 }
@@ -500,7 +570,7 @@ function verify(
         const y1 = Math.max(q[1], q[3], q[5], q[7]) - b[1];
         const cr = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
         const area = Math.max(0.01, cr.w * cr.h);
-        if (c.trim() && map.masks.some((m) => overlapArea(cr, m) > area * 0.4)) {
+        if (c.trim() && map.masks.some((m) => maskOverlapArea(m, cr) > area * 0.4)) {
           leakedChars++;
           if (leakedSamples.length < 8) leakedSamples.push(`${i + 1}ページ「${c}」`);
         }
@@ -528,7 +598,7 @@ function verify(
     const a = page.toPixmap(mupdf.Matrix.scale(k, k), mupdf.ColorSpace.DeviceRGB, false, true);
     const c = refPage.toPixmap(mupdf.Matrix.scale(k, k), mupdf.ColorSpace.DeviceRGB, false, true);
     if (map.rot) refObj.put("Rotate", baseRot);
-    const r = comparePixmaps(a, c, map.masks.map((m) => inflate(m, 2.5)), k, opts.rasterize ? 72 : 40);
+    const r = comparePixmaps(a, c, map.masks.map((m) => inflate(maskBounds(m), 2.5)), k, opts.rasterize ? 72 : 40);
     a.destroy();
     c.destroy();
     refPage.destroy();
