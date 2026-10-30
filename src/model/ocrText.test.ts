@@ -134,6 +134,9 @@ describe("文字認識の結果を文字層にする", () => {
     const one = { confidence: 0, bbox: box(0, 100, 18, 130), symbols: [{ text: "1", confidence: 85, bbox: box(4, 100, 12, 130) }] };
     const lines: OcrLine[] = [{ words: [one, word("234,567", 30)] }];
     expect(ocrToPageText(lines, ID).chars.join("")).toBe("1234,567");
+    // 1つの数字なので、隣のセルの数字として分けない（検索やクリックで数字全体が選べるように）
+    const joined = ocrToPageText(lines, ID);
+    expect(new Set(joined.lines).size).toBe(1);
     // 離れた所にある自信のない1文字は、読み違いとして捨てる
     const far = { ...one, bbox: box(-200, 100, -182, 130), symbols: [{ ...one.symbols[0], bbox: box(-196, 100, -188, 130) }] };
     expect(ocrToPageText([{ words: [far, word("234,567", 30)] }], ID).chars.join("")).toBe("234,567");
@@ -445,7 +448,7 @@ describe("インクで読み違いを直す", () => {
     expect(l.words[0].inkMatched).toBe(false);
   });
 
-  it("表のセルの数値（小数など）の単語どうしの間が広ければ、隣のセルの数字として分ける。文の中の数字の続きは分けない", () => {
+  it("表のセルの数値（小数など）どうしの間が広ければ、隣のセルの数字として分ける。1つの数字の続きや文の中の数字は分けない", () => {
     const pair = (second: string) => {
       const t = ocrToPageText(
         [
@@ -464,7 +467,8 @@ describe("インクで読み違いを直す", () => {
       );
       return { text: t.chars.join(""), split: t.lines[2] !== t.lines[3] };
     };
-    expect(pair("34")).toEqual({ text: "1.234", split: true });
+    expect(pair("3.4")).toEqual({ text: "1.23.4", split: true });
+    expect(pair("34")).toEqual({ text: "1.234", split: false });
     expect(pair("3日")).toEqual({ text: "1.23日", split: false });
   });
 

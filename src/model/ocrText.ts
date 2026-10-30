@@ -1072,12 +1072,13 @@ export function ocrToPageText(lines: OcrLine[], toPage: Matrix6, img?: GrayImage
       // 日本語の文字の隣（「4月 1日」「〒 102」など）も、狭い隙間には空白を入れない（検索で見つかるように）
       const japanese = prev && (CJK.test(prev.text) || CJK.test(text));
       // 数字の間が広く空いていれば隣のセルの数字（「100.9」と「103.1」など）。1つの単語に読まれていても分ける。
-      // 別の単語のときは、どちらも数字だけの単語で、片方に小数点などがあるとき（表のセルの数値）。
-      // 文の中の「23日」が「2」と「3日」に分かれたとき、「090 12345678」のように間の空いた電話番号は分けない
+      // 別の単語のときは、どちらも小数点などの付いた数字だけの単語のとき（表のセルの数値）。
+      // 1つの数字が分かれて読まれたとき（「1」と「234,567」）、文の中の「23日」が「2」と「3日」に分かれたとき、
+      // 「090 12345678」のように間の空いた電話番号は分けない
       const cellGap =
         inNumber &&
         gap > hh * NUMBER_CELL_GAP &&
-        (!first || (digit(prev.text) && digit(text) && table && prev.table && (formatted || prev.formatted)));
+        (!first || (digit(prev.text) && digit(text) && table && prev.table && formatted && prev.formatted));
       if (!prev || gap > hh * (first ? CHUNK_GAP : CHUNK_GAP_IN_WORD) || cellGap) line++;
       else if (first && gap > hh * (inNumber || japanese ? NUMBER_SPACE_GAP : SPACE_GAP))
         push(" ", prev.g.x1, Math.min(prev.g.y0, g.y0), g.x0, Math.max(prev.g.y1, g.y1), hh);
