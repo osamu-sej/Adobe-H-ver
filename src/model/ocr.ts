@@ -395,7 +395,7 @@ async function recognizePage(worker: OcrWorker, job: Job): Promise<PageText> {
   } catch {
     toast({ message: "図表の追加読み取りを完了できませんでした。見逃しを確認してください。", tone: "warn", duration: 9000 });
   } finally {
-    await worker.setParameters({ tessedit_pageseg_mode: "3" as never });
+    await worker.setParameters({ tessedit_pageseg_mode: OCR_PARAMS.tessedit_pageseg_mode });
   }
   return result;
 }
