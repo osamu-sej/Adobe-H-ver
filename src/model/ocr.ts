@@ -1,7 +1,7 @@
 import type { Worker as OcrWorker } from "tesseract.js";
 import { engine } from "../engine/client";
 import { annotate, CloudOcrError, readingTurn, uprightReading, visionToLines } from "./cloudOcr";
-import { buildCollages, fromCollage, mergeFill, unreadGroups, type FillGroup } from "./ocrFill";
+import { buildCollages, flattenBackground, fromCollage, mergeFill, unreadGroups, type FillGroup } from "./ocrFill";
 import { supplementDigits } from "./ocrSupplement";
 import { OCR_PARAMS, ocrToPageText, orientationScore, readsWell, snapToInk, type GrayImage, type Matrix6, type OcrLine } from "./ocrText";
 import type { OcrMode } from "./pageText";
@@ -338,12 +338,13 @@ async function fillUnread(worker: OcrWorker, r: Reading): Promise<OcrLine[]> {
 
 /**
  * 前処理で薄くなった・消えた文字（淡い灰色の数字、色地の数字など）を、前処理していない元画像から読み直して足す。
- * ページ全体は読み直さず、前処理した画像で読めなかったインクの所だけを切り出して読むので、速い。
+ * ページ全体は読み直さず、前処理した画像で読めなかったインクの所だけを切り出して読むので、速い（灰色・色付きのセルの中の文字は、地を白に直してから切り出す）。
  * 元画像は外部へ送らない。足すのは確かな数字の候補だけ
  */
 async function fillFromOriginal(worker: OcrWorker, r: Reading, lines: OcrLine[], base: PageText, original: Uint8Array): Promise<PageText> {
-  const image: GrayImage = { ...r.image, data: original };
-  const groups = unreadGroups(image, withInk(lines, r.image), imageDpi(r.toPage));
+  const dpi = imageDpi(r.toPage);
+  const image = flattenBackground({ ...r.image, data: original }, dpi);
+  const groups = unreadGroups(image, withInk(lines, r.image), dpi);
   if (!groups.length || groups.length > MAX_FILL) return base;
   return supplementDigits(base, withInk(await rereadGroups(worker, image, groups), image), r.toPage, image);
 }

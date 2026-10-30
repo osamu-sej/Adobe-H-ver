@@ -24,6 +24,58 @@ const MAX_SCALE = 3;
 /** 1枚に並べる画像の高さの上限（画素） */
 const MAX_COLLAGE_H = 6000;
 
+/** 地の明るさを調べる範囲の半径（300dpi での画素）。文字の線や1文字の幅より十分広く、セルの縁より狭い */
+const FLAT_RADIUS = 24;
+/** 地とみなす明るさの範囲。これより暗い所（塗りつぶし・白抜きのセル）や白に近い所は、そのままにする */
+const FLAT_MIN_BG = 120;
+const FLAT_MAX_BG = 235;
+
+/** 各画素の、まわり（縦横 radius 画素ずつ）の最大値 */
+function slidingMax(src: GrayImage["data"], w: number, h: number, r: number): Uint8Array {
+  const tmp = new Uint8Array(w * h);
+  const out = new Uint8Array(w * h);
+  const q = new Int32Array(Math.max(w, h));
+  // 1本の線（n画素、step おき）ごとに、単調な待ち行列で最大値を求める
+  const pass = (from: GrayImage["data"], to: Uint8Array, lines: number, n: number, step: number, stride: number) => {
+    for (let line = 0; line < lines; line++) {
+      const base = line * stride;
+      let head = 0;
+      let tail = 0;
+      for (let i = 0; i < n + r; i++) {
+        if (i < n) {
+          const v = from[base + i * step];
+          while (tail > head && from[base + q[tail - 1] * step] <= v) tail--;
+          q[tail++] = i;
+        }
+        const c = i - r;
+        if (c < 0) continue;
+        while (q[head] < c - r) head++;
+        to[base + c * step] = from[base + q[head] * step];
+      }
+    }
+  };
+  pass(src, tmp, h, w, 1, w);
+  pass(tmp, out, w, h, w, 1);
+  return out;
+}
+
+/**
+ * 灰色・色付きのセルの中の文字を、前処理をしていない元画像から拾えるようにする。
+ * 画素を、まわりの地の明るさで割って、セルの地を白に近づける（文字の濃さは地との差になる）。
+ * 元画像のままだとセルが地ごと1つの大きなかたまりになり、中の文字が読み直しの対象にならない。
+ * 白に近い所（薄い灰色の文字を含む）と、暗い所（塗りつぶし・白抜きのセル）は変えない
+ */
+export function flattenBackground(img: GrayImage, dpi = 300): GrayImage {
+  const { data, width, height } = img;
+  const bg = slidingMax(data, width, height, Math.max(1, Math.round((FLAT_RADIUS * dpi) / 300)));
+  const out = new Uint8Array(data);
+  for (let i = 0; i < out.length; i++) {
+    const b = bg[i];
+    if (b >= FLAT_MIN_BG && b < FLAT_MAX_BG) out[i] = Math.min(255, Math.round((data[i] * 255) / b));
+  }
+  return { data: out, width, height };
+}
+
 interface Comp extends OcrBox {
   /** このまとまりの画素の連なり（runs の番号） */
   runs: number[];

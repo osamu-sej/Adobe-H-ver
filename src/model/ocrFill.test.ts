@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCollages, fromCollage, mergeFill, unreadGroups } from "./ocrFill";
+import { buildCollages, flattenBackground, fromCollage, mergeFill, unreadGroups } from "./ocrFill";
 import type { GrayImage, OcrLine, OcrWord } from "./ocrText";
 
 const box = (x0: number, y0: number, x1: number, y1: number) => ({ x0, y0, x1, y1 });
@@ -125,5 +125,34 @@ describe("読み残しの読み直し", () => {
     const groups = unreadGroups(tall, read);
     expect(groups.length).toBe(2);
     expect(groups.some((g) => g.box.y0 === 75 && g.box.y1 === 105)).toBe(true);
+  });
+  describe("灰色・色付きのセルの中の文字", () => {
+    /** セル（明るさ cell）の中に、数字ほどの大きさの文字（明るさ ink）を置く */
+    const cell = (cellV: number, ink: number) => {
+      const data = new Uint8Array(400 * 200).fill(255);
+      for (let y = 20; y < 160; y++) data.fill(cellV, y * 400 + 30, y * 400 + 370);
+      for (let y = 60; y < 90; y++) data.fill(ink, y * 400 + 100, y * 400 + 116);
+      return { data, width: 400, height: 200 } as GrayImage;
+    };
+
+    it("元画像のままだとセルが地ごと1つの大きなかたまりになり、中の文字を切り出せない", () => {
+      expect(unreadGroups(cell(210, 60), [])).toHaveLength(0);
+    });
+
+    it("地の明るさで割ると、セルの中の文字が切り出せる（地は白に、文字は濃いまま）", () => {
+      const flat = flattenBackground(cell(210, 60));
+      expect(flat.data[100 * 400 + 200]).toBeGreaterThan(250);
+      expect(flat.data[70 * 400 + 105]).toBeLessThan(90);
+      expect(unreadGroups(flat, []).map((g) => g.box)).toEqual([box(100, 60, 116, 90)]);
+      // 濃い灰色（150）のセルでも同じ
+      expect(unreadGroups(flattenBackground(cell(150, 20)), [])).toHaveLength(1);
+    });
+
+    it("白地の薄い灰色の文字と、暗いセル（塗りつぶし・白抜き）は変えない", () => {
+      const faint = image(200, 100, [{ x: 50, y: 30, w: 16, h: 30, v: 215 }]);
+      expect(flattenBackground(faint).data).toEqual(faint.data);
+      const dark = cell(50, 255);
+      expect(flattenBackground(dark).data).toEqual(dark.data);
+    });
   });
 });
