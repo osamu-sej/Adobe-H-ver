@@ -7,8 +7,10 @@ import {
   deleteMasks,
   deletePages,
   endGesture,
+  finishFrameEdit,
   redo,
   rotatePages,
+  scrollToPage,
   select,
   selectFrames,
   startFrameEdit,
@@ -120,7 +122,12 @@ function handleKeyDown(e: KeyboardEvent, openPicker: () => void) {
   // 枠を1つ選んでいるとき：Enter / F2 で文字の入力。文字キーでは始めない（M V T H P などのショートカットが使えなくなるため）
   if (s.frameSel.length === 1 && !s.selection.length && !s.suggestion && (e.key === "Enter" || e.key === "F2")) {
     e.preventDefault();
-    startFrameEdit(s.frameSel[0]);
+    const f = s.frames.find((x) => x.id === s.frameSel[0]);
+    if (f) {
+      // 画面に出ていない（描画範囲の外にある）枠は、まずそこへ動く。入力欄は、枠が描かれたときに出る
+      if (!document.querySelector(`[data-frame-id="${f.id}"]`)) scrollToPage({ docId: f.docId, page: f.page }, f);
+      startFrameEdit(f.id);
+    }
     return;
   }
 
@@ -255,6 +262,17 @@ export function App() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const openPicker = () => fileRef.current?.click();
+
+  // 文字の入力を始めたのに入力欄が出ないとき（枠のページが描かれないままのときなど）は、入力を終えて、
+  // 入力のひとまとまりの操作（取り消し・やり直しを止める）を残さない
+  const editing = useStore((s) => s.frameEdit);
+  useEffect(() => {
+    if (!editing) return;
+    const t = window.setTimeout(() => {
+      if (!document.querySelector(".frame-editor")) finishFrameEdit();
+    }, 1000);
+    return () => window.clearTimeout(t);
+  }, [editing]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => handleKeyDown(e, openPicker);
