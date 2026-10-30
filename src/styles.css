@@ -2212,6 +2212,9 @@ button.sb-privacy.cloud:hover {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+.frame-box.peek {
+  outline: 1.5px dashed var(--accent);
+}
 .frame-editor {
   position: absolute;
   left: 50%;

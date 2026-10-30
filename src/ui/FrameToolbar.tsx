@@ -22,6 +22,14 @@ function resize(f: TextFrame, size: number): Partial<TextFrame> {
   return { size, h: Math.max(f.h, neededHeight({ ...f, size })) };
 }
 
+/** 太字にする・戻す。字幅が変わって折り返しが増えたら、枠を下に広げる */
+export function setFrameBold(ids: string[], bold: boolean | ((f: TextFrame) => boolean)) {
+  patchFrames(ids, (f) => {
+    const next = typeof bold === "function" ? bold(f) : bold;
+    return { bold: next, h: Math.max(f.h, neededHeight({ ...f, bold: next })) };
+  });
+}
+
 /** 文字の大きさの欄：数字を入れて Enter、または一覧から選ぶ。↑↓で段階を上下 */
 function SizeInput({ ids, size }: { ids: string[]; size: number | undefined }) {
   const shown = size === undefined ? "" : String(Math.round(size * 10) / 10);
@@ -184,7 +192,7 @@ export function FrameToolbar({ left, top, below }: { left: number; top: number; 
         className={"tb-btn bold" + (bold ? " active" : "")}
         title="太字（Ctrl+B）"
         aria-pressed={bold}
-        onClick={() => patchFrames(ids, { bold: !bold })}
+        onClick={() => setFrameBold(ids, !bold)}
       >
         B
       </button>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TextFrame } from "../model/types";
-import { clampSize, drawFrame, FRAME_LINE, FRAME_PAD, FRAME_SIZES, neededHeight, stepSize, textHeight, wrapText } from "./frames";
+import { clampSize, drawFrame, FRAME_LINE, FRAME_PAD, FRAME_SIZES, frameLines, neededHeight, stepSize, textHeight, wrapText } from "./frames";
 
 /** 1文字を size の幅として数える（日本語の全角文字と同じ） */
 const wide = (size: number) => () => size;
@@ -71,6 +71,19 @@ describe("枠の高さ", () => {
     const f = { text: "あ".repeat(10), size: 10, bold: false, w: 100 };
     expect(neededHeight(f)).toBeCloseTo(textHeight(2, 10) + FRAME_PAD * 2);
     expect(neededHeight({ ...f, text: "あ" })).toBeCloseTo(10 * FRAME_LINE + FRAME_PAD * 2);
+  });
+});
+
+describe("枠の幅より大きい文字", () => {
+  /** 1文字が文字の大きさの半分の幅の文字（英字など） */
+  const half = (size: number) => ({ font: "", measureText: () => ({ width: size / 2 }) }) as unknown as CanvasRenderingContext2D;
+
+  it("折り返しは入力欄と同じ実際の内幅（枠の幅−左右の余白）で行う。1文字が内幅を超えるときは1文字ずつの行にする", () => {
+    // 幅50・余白4pt → 内幅42。文字の大きさ96 → 1文字48pt（内幅より広い）
+    const f = { text: "ab", size: 96, bold: false, w: 50 };
+    expect(frameLines(f, half(96))).toEqual(["a", "b"]);
+    // 内幅に2文字入るとき（1文字20pt、内幅42）は2文字で1行
+    expect(frameLines({ ...f, text: "abc", size: 40 }, half(40))).toEqual(["ab", "c"]);
   });
 });
 

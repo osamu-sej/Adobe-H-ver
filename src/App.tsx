@@ -7,7 +7,6 @@ import {
   deleteMasks,
   deletePages,
   endGesture,
-  patchFrames,
   redo,
   rotatePages,
   select,
@@ -21,7 +20,7 @@ import {
 import { STYLE_ORDER, type SnapMode, type Tool } from "./model/types";
 import { ContextMenu } from "./ui/ContextMenu";
 import { ExportDialog } from "./ui/ExportDialog";
-import { changeFrameSize } from "./ui/FrameToolbar";
+import { changeFrameSize, setFrameBold } from "./ui/FrameToolbar";
 import { CloudOcrDialog } from "./ui/CloudOcr";
 import { SettingsDialog } from "./ui/Settings";
 import { DropOverlay, EmptyState, HelpOverlay, PasswordDialog, SafetyDialog, StatusBar, SuggestionBar, Toasts } from "./ui/Overlays";
@@ -79,7 +78,7 @@ function handleKeyDown(e: KeyboardEvent, openPicker: () => void) {
     } else if (s.frameSel.length && k === "b") {
       e.preventDefault();
       const bold = s.frames.filter((f) => s.frameSel.includes(f.id)).every((f) => f.bold);
-      patchFrames(s.frameSel, { bold: !bold });
+      setFrameBold(s.frameSel, !bold);
     } else if (k === "z") {
       e.preventDefault();
       if (e.shiftKey) redo();
@@ -118,19 +117,11 @@ function handleKeyDown(e: KeyboardEvent, openPicker: () => void) {
   }
   if (e.altKey) return;
 
-  // 枠を1つ選んでいるとき：Enter / F2 で文字の入力、文字キーを押すとその文字から入力（PowerPoint と同じ）
-  if (s.frameSel.length === 1 && !s.selection.length && !s.suggestion) {
-    const id = s.frameSel[0];
-    if (e.key === "Enter" || e.key === "F2") {
-      e.preventDefault();
-      startFrameEdit(id);
-      return;
-    }
-    if (e.key.length === 1 && e.key !== " ") {
-      e.preventDefault();
-      startFrameEdit(id, { insert: e.key });
-      return;
-    }
+  // 枠を1つ選んでいるとき：Enter / F2 で文字の入力。文字キーでは始めない（M V T H P などのショートカットが使えなくなるため）
+  if (s.frameSel.length === 1 && !s.selection.length && !s.suggestion && (e.key === "Enter" || e.key === "F2")) {
+    e.preventDefault();
+    startFrameEdit(s.frameSel[0]);
+    return;
   }
 
   if (TOOL_KEYS[k]) {
@@ -253,7 +244,8 @@ function handleKeyDown(e: KeyboardEvent, openPicker: () => void) {
 
 function handleKeyUp(e: KeyboardEvent) {
   if (e.key === "p" || e.key === "P") useStore.setState({ peek: false });
-  if (e.key.startsWith("Arrow")) endGesture();
+  // 文字の入力中は、入力欄の矢印キー（入力位置の移動）で、入力のひとまとまりの操作を終えない
+  if (e.key.startsWith("Arrow") && !isTyping(e) && !useStore.getState().frameEdit) endGesture();
 }
 
 export function App() {

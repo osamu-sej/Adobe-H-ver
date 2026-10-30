@@ -66,8 +66,8 @@ interface AppState extends Snapshot {
   selection: string[];
   /** 選択中のテキスト枠（マスクの選択とは同時に持たない） */
   frameSel: string[];
-  /** 文字を入力中のテキスト枠。insert は、選んだ枠に文字キーを押して入力を始めたときの最初の1文字 */
-  frameEdit: { id: string; insert?: string; fresh?: boolean } | null;
+  /** 文字を入力中のテキスト枠 */
+  frameEdit: { id: string; fresh?: boolean } | null;
   /** 選択中のマスクの上に操作ツールバーを出すか（作った直後は出さない） */
   toolbar: boolean;
   zoom: number;
@@ -276,6 +276,8 @@ export function removeDoc(docId: string) {
       selection: s.selection.filter((id) => s.masks.find((m) => m.id === id)?.docId !== docId),
       frameSel: s.frameSel.filter((id) => s.frames.find((f) => f.id === id)?.docId !== docId),
       frameEdit: s.frameEdit && s.frames.find((f) => f.id === s.frameEdit!.id)?.docId === docId ? null : s.frameEdit,
+      // 入力中に文書を閉じたときは、入力のひとまとまりの操作も捨てる
+      gesture: s.frameEdit && s.frames.find((f) => f.id === s.frameEdit!.id)?.docId === docId ? null : s.gesture,
       current: s.current?.docId === docId ? null : s.current,
       pageSel: s.pageSel?.docId === docId ? null : s.pageSel,
       search: { ...s.search, hits: s.search.hits.filter((h) => h.docId !== docId) },
@@ -351,7 +353,7 @@ export function patchFrames(ids: string[], patch: Partial<TextFrame> | ((f: Text
  * 枠の中の文字の入力を始める。入力が終わるまでの変更（文字・大きさなど）は履歴に積まず、終わったときに1回にまとめる。
  * fresh は、ツールで作ったばかりの枠（何も入れずに終えたら、枠ごとなかったことにする）
  */
-export function startFrameEdit(id: string, opts: { insert?: string; fresh?: boolean } = {}) {
+export function startFrameEdit(id: string, opts: { fresh?: boolean } = {}) {
   if (!get().frames.some((f) => f.id === id)) return;
   beginGesture();
   set({ frameEdit: { id, ...opts }, frameSel: [id], selection: [], toolbar: false });
@@ -371,7 +373,15 @@ export function finishFrameEdit() {
 
 export function deleteFrames(ids: string[]) {
   if (!ids.length) return;
-  const idSet = new Set(ids);
+  // 入力中の枠を消すときは、先に入力を終える（入力のひとまとまりの操作を残したままにしない）
+  const editing = get().frameEdit;
+  if (editing && ids.includes(editing.id)) finishFrameEdit();
+  const idSet = new Set(ids.filter((id) => get().frames.some((f) => f.id === id)));
+  if (!idSet.size) {
+    // 作ったばかりの空の枠は、入力を終えた時点でなくなっている
+    set((s) => ({ frameSel: s.frameSel.filter((id) => !ids.includes(id)) }));
+    return;
+  }
   commit((s) => ({ frames: s.frames.filter((f) => !idSet.has(f.id)) }));
   set((s) => ({
     frameSel: s.frameSel.filter((id) => !idSet.has(id)),

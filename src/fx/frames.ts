@@ -81,7 +81,8 @@ function scratch(): Ctx | null {
 
 /** 枠の中の文字の行。文字の幅が測れない環境（テスト）では、1文字を文字の大きさの幅として数える */
 export function frameLines(f: Pick<TextFrame, "text" | "size" | "bold" | "w">, ctx: Ctx | null = scratch()): string[] {
-  const inner = Math.max(f.size, f.w - FRAME_PAD * 2);
+  // 入力欄（textarea）の内側の幅そのもの。1文字が幅より広いときは、その文字を1行に置く（wrapText が受け持つ）
+  const inner = Math.max(1, f.w - FRAME_PAD * 2);
   if (ctx) {
     ctx.font = frameFont(f);
     return wrapText((s) => ctx.measureText(s).width, f.text, inner);

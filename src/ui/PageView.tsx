@@ -151,7 +151,8 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
     if (c.width !== w) c.width = w;
     if (c.height !== h) c.height = h;
     // 文字を入力中の枠は、入力欄が代わりに見せる
-    paintMasks(c, bmp, peek ? [] : [...masks, ...previewMasks], rot, info.w, info.h, frames.filter((f) => f.id !== editingId));
+    // 原本を表示している間は、マスクも枠も描かない
+    paintMasks(c, bmp, peek ? [] : [...masks, ...previewMasks], rot, info.w, info.h, peek ? [] : frames.filter((f) => f.id !== editingId));
   }, [bmp, masks, previewMasks, peek, rot, info.w, info.h, frames, editingId]);
 
   const toBase = (clientX: number, clientY: number): [number, number] => {
@@ -675,7 +676,7 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
           <MaskBox key={m.id} mask={m} selected={selSet.has(m.id)} style={toView(m)} peek={peek} />
         ))}
         {frames.map((f) => (
-          <FrameBox key={f.id} frame={f} selected={frameSet.has(f.id)} editing={editingId === f.id} style={toView(f)} rot={rot} zoom={zoom} />
+          <FrameBox key={f.id} frame={f} selected={frameSet.has(f.id)} editing={editingId === f.id && !peek} peek={peek} style={toView(f)} rot={rot} zoom={zoom} />
         ))}
         {frameRect && (
           <div className="rubber free" style={frameRect}>

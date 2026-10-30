@@ -147,6 +147,41 @@ describe("テキスト枠（ストア）", () => {
     expect(frames()).toEqual([]);
   });
 
+  it("入力中の枠を削除しても、入力のひとまとまりの操作は残らない（そのあとも取り消し・やり直しができる）", () => {
+    addFrame(frame("t1", { text: "あ" }));
+    startFrameEdit("t1");
+    patchFrames(["t1"], { text: "あい" });
+    deleteFrames(["t1"]);
+    expect(frames()).toEqual([]);
+    expect(useStore.getState().gesture).toBeNull();
+    expect(useStore.getState().frameEdit).toBeNull();
+    // 削除、入力の変更、作成の順に取り消せる
+    expect(undo()).toBe(true);
+    expect(frames()[0].text).toBe("あい");
+    expect(undo()).toBe(true);
+    expect(frames()[0].text).toBe("あ");
+    expect(redo()).toBe(true);
+  });
+
+  it("作ったばかりの空の枠を入力中に削除したら、枠は履歴に残らず、操作のひとまとまりも残らない", () => {
+    const before = useStore.getState().past.length;
+    createFresh(frame("t3"));
+    deleteFrames(["t3"]);
+    expect(frames()).toEqual([]);
+    expect(useStore.getState().gesture).toBeNull();
+    expect(useStore.getState().past.length).toBe(before);
+    expect(useStore.getState().frameSel).toEqual([]);
+  });
+
+  it("入力中に文書を閉じたら、入力のひとまとまりの操作も捨てる（取り消し・やり直しが止まったままにならない）", () => {
+    createFresh(frame("t4"));
+    removeDoc("a");
+    expect(useStore.getState().gesture).toBeNull();
+    registerDoc(doc("a", 2), { order: [0, 1], rot: {} });
+    addFrame(frame("t5"));
+    expect(undo()).toBe(true);
+  });
+
   it("文書を閉じると、その文書の枠も選択も入力もなくなる", () => {
     addFrame(frame("t1"));
     startFrameEdit("t1");
