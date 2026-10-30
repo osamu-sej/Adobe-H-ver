@@ -65,23 +65,6 @@ describe("読み残しの読み直し", () => {
     expect(merged[1].words[0].bbox.x0).toBeCloseTo(20 + (58 * 2) / 3);
   });
 
-  it("濃い文字と薄い数字が同じ行にあるときも、それぞれの濃さで読み直す", () => {
-    const row = image(180, 80, [
-      { x: 20, y: 20, w: 16, h: 30, v: 0 },
-      { x: 40, y: 20, w: 16, h: 30, v: 0 },
-      { x: 62, y: 20, w: 16, h: 30, v: 215 },
-    ]);
-    const read: OcrLine[] = [{ words: [word("12", box(20, 20, 56, 50))] }];
-    const groups = unreadGroups(row, read);
-    expect(groups).toHaveLength(1);
-    const original: GrayImage = { ...row, data: row.data.slice() };
-    buildCollages(original, groups);
-    expect(original.data[30 * 180 + 68]).toBeGreaterThan(200);
-    buildCollages(row, groups, true);
-    expect(row.data[30 * 180 + 25]).toBe(0);
-    expect(row.data[30 * 180 + 68]).toBeLessThan(20);
-  });
-
   it("切り出した行は、薄い文字を濃くして縦に並べ、読めた位置を元の画像に戻す", () => {
     const copy: GrayImage = { ...img, data: img.data.slice() };
     const [c] = buildCollages(copy, unreadGroups(copy, first));
