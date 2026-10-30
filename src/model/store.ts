@@ -256,6 +256,9 @@ export function registerDoc(doc: DocEntry, layout: DocLayout, masks: Mask[] = []
     ...add(snapshot()),
     past: s.past.map(add),
     future: s.future.map(add),
+    // 文字の入力中など、ひとまとまりの操作の途中に開いたときも、その操作の基準の状態に加えておく
+    // （あとで取り消し・やり直しの基準に戻ったとき、開いた文書が消えないように）
+    gesture: s.gesture ? add(s.gesture) : null,
   }));
 }
 
@@ -276,8 +279,9 @@ export function removeDoc(docId: string) {
       selection: s.selection.filter((id) => s.masks.find((m) => m.id === id)?.docId !== docId),
       frameSel: s.frameSel.filter((id) => s.frames.find((f) => f.id === id)?.docId !== docId),
       frameEdit: s.frameEdit && s.frames.find((f) => f.id === s.frameEdit!.id)?.docId === docId ? null : s.frameEdit,
-      // 入力中に文書を閉じたときは、入力のひとまとまりの操作も捨てる
-      gesture: s.frameEdit && s.frames.find((f) => f.id === s.frameEdit!.id)?.docId === docId ? null : s.gesture,
+      // 入力中の枠のある文書を閉じたときは、入力のひとまとまりの操作も捨てる。それ以外の途中の操作は、閉じた文書を除く
+      gesture:
+        s.frameEdit && s.frames.find((f) => f.id === s.frameEdit!.id)?.docId === docId ? null : s.gesture ? strip(s.gesture) : null,
       current: s.current?.docId === docId ? null : s.current,
       pageSel: s.pageSel?.docId === docId ? null : s.pageSel,
       search: { ...s.search, hits: s.search.hits.filter((h) => h.docId !== docId) },
@@ -354,7 +358,9 @@ export function patchFrames(ids: string[], patch: Partial<TextFrame> | ((f: Text
  * fresh は、ツールで作ったばかりの枠（何も入れずに終えたら、枠ごとなかったことにする）
  */
 export function startFrameEdit(id: string, opts: { fresh?: boolean } = {}) {
-  if (!get().frames.some((f) => f.id === id)) return;
+  const f = get().frames.find((x) => x.id === id);
+  // 削除したページの枠は、画面に出ない（入力欄が出ない）ので始めない
+  if (!f || !get().layouts[f.docId]?.order.includes(f.page)) return;
   beginGesture();
   set({ frameEdit: { id, ...opts }, frameSel: [id], selection: [], toolbar: false });
 }
@@ -411,8 +417,14 @@ export function deletePages(docId: string, pages: number[]) {
   commit((snap) => ({
     layouts: { ...snap.layouts, [docId]: { ...snap.layouts[docId], order: remaining } },
   }));
-  // 削除したページは選択から外す
-  set((st) => ({ pageSel: st.pageSel?.docId === docId ? trimSelection(st.pageSel, remaining) : st.pageSel }));
+  // 削除したページは選択から外す（そのページの枠の選択も）
+  set((st) => ({
+    pageSel: st.pageSel?.docId === docId ? trimSelection(st.pageSel, remaining) : st.pageSel,
+    frameSel: st.frameSel.filter((id) => {
+      const f = st.frames.find((x) => x.id === id);
+      return !f || f.docId !== docId || remaining.includes(f.page);
+    }),
+  }));
   return true;
 }
 

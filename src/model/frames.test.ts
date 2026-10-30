@@ -3,6 +3,7 @@ import {
   addFrame,
   beginGesture,
   deleteFrames,
+  deletePages,
   finishFrameEdit,
   patchFrames,
   redo,
@@ -180,6 +181,36 @@ describe("テキスト枠（ストア）", () => {
     registerDoc(doc("a", 2), { order: [0, 1], rot: {} });
     addFrame(frame("t5"));
     expect(undo()).toBe(true);
+  });
+
+  it("入力中に別の文書を開いても、入力を終えたときにその文書が消えない", () => {
+    createFresh(frame("t6"));
+    registerDoc(doc("b", 2), { order: [0, 1], rot: {} });
+    finishFrameEdit();
+    expect(frames()).toEqual([]);
+    expect(useStore.getState().docOrder).toEqual(["a", "b"]);
+    expect(useStore.getState().layouts.b.order).toEqual([0, 1]);
+    // 入力中に文書を閉じたときも、閉じた文書は戻らない
+    createFresh(frame("t7"));
+    removeDoc("b");
+    finishFrameEdit();
+    expect(useStore.getState().docOrder).toEqual(["a"]);
+    expect(useStore.getState().layouts.b).toBeUndefined();
+  });
+
+  it("削除したページの枠は、選択から外れ、文字の入力も始められない（入力が終わらなくなったりしない）", () => {
+    addFrame(frame("t8", { page: 1 }));
+    expect(useStore.getState().frameSel).toEqual(["t8"]);
+    expect(deletePages("a", [1])).toBe(true);
+    expect(useStore.getState().frameSel).toEqual([]);
+    startFrameEdit("t8");
+    expect(useStore.getState().frameEdit).toBeNull();
+    expect(useStore.getState().gesture).toBeNull();
+    // ページを戻せば、枠もそのまま戻って入力できる
+    undo();
+    startFrameEdit("t8");
+    expect(useStore.getState().frameEdit?.id).toBe("t8");
+    finishFrameEdit();
   });
 
   it("文書を閉じると、その文書の枠も選択も入力もなくなる", () => {

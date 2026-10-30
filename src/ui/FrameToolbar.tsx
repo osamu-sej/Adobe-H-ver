@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { clampSize, FRAME_SIZES, FRAME_TEXT_COLORS, neededHeight, stepSize } from "../fx/frames";
 import { deleteFrames, patchFrames, toast, undo, useStore } from "../model/store";
@@ -36,6 +36,8 @@ function SizeInput({ ids, size }: { ids: string[]; size: number | undefined }) {
   const [value, setValue] = useState(shown);
   const [focus, setFocus] = useState(false);
   const [open, setOpen] = useState(false);
+  // Enter・Escape で欄を閉じるときの blur では、もう一度適用しない（Enter は二重に履歴に積まれ、Escape は取り消したはずの値が適用される）
+  const skipBlur = useRef(false);
   useEffect(() => {
     if (!focus) setValue(shown);
   }, [shown, focus]);
@@ -45,7 +47,14 @@ function SizeInput({ ids, size }: { ids: string[]; size: number | undefined }) {
       setValue(shown);
       return;
     }
-    setFrameSize(ids, v);
+    if (clampSize(v) !== size) setFrameSize(ids, v);
+  };
+  const close = (el: HTMLInputElement, commit: boolean) => {
+    if (commit) apply(el.value);
+    else setValue(shown);
+    skipBlur.current = true;
+    el.blur();
+    skipBlur.current = false;
   };
   return (
     <div className="pop-anchor size-box">
@@ -64,21 +73,18 @@ function SizeInput({ ids, size }: { ids: string[]; size: number | undefined }) {
         onChange={(e) => setValue(e.target.value)}
         onBlur={() => {
           setFocus(false);
-          apply(value);
+          if (!skipBlur.current) apply(value);
         }}
         onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            apply(value);
-            e.currentTarget.blur();
-          } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+          if (e.key === "Enter") close(e.currentTarget, true);
+          else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
             e.preventDefault();
             const base = Number(value) || size || 14;
             const next = stepSize(base, e.key === "ArrowUp" ? 1 : -1);
             setValue(String(next));
             setFrameSize(ids, next);
           } else if (e.key === "Escape") {
-            setValue(shown);
-            e.currentTarget.blur();
+            close(e.currentTarget, false);
             e.stopPropagation();
           }
         }}

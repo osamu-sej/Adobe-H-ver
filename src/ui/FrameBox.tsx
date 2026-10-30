@@ -61,7 +61,8 @@ function FrameEditor({ frame, rot, zoom }: { frame: TextFrame; rot: Rot; zoom: n
         // 矢印キーで入力位置を動かしたとき、離したキーの通知で入力のひとまとまりの操作を終えないように
         onKeyUp={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
-          e.stopPropagation();
+          // 入力欄のキーは、画面全体のショートカット（Ctrl+S 書き出し・Ctrl+O 開く・Ctrl+F 検索）にも届ける。
+          // それ以外のキーは、入力中は画面全体の側で無視する（isTyping）
           if (e.nativeEvent.isComposing) return;
           const mod = e.ctrlKey || e.metaKey;
           if (e.key === "Escape" || (mod && e.key === "Enter")) {
