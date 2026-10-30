@@ -51,8 +51,11 @@ describe('回転した範囲の書き出し',()=>{
    // 表示の背景として入れる画像そのものにも、元のマスク内部を残さない。
    const pdf=new mupdf.PDFDocument(file.bytes), ref=pdf.findPage(0).getInheritable('Resources').get('XObject').get('KakusuBackdrop0');
    expect(ref.isNull()).toBe(false);
-   const img=pdf.loadImage(ref), safe=img.toPixmap(), i=300*safe.getStride()+300*3;
-   expect([...safe.getPixels().slice(i,i+3)]).toEqual([255,255,255]);safe.destroy();img.destroy();pdf.destroy();
+   const img=pdf.loadImage(ref), safe=img.toPixmap(), safeData=safe.getPixels();let checked=0;
+   for(let y=10;y<190;y+=3) for(let x=10;x<190;x+=3) if(maskContains(inner,x+.5,y+.5)) {
+     const i=(y*3+1)*safe.getStride()+(x*3+1)*3;expect([...safeData.slice(i,i+3)]).toEqual([255,255,255]);checked++;
+   }
+   expect(checked).toBeGreaterThan(100);safe.destroy();img.destroy();pdf.destroy();
  },30000);
  it('ページ自体が90度回転しても、マスク内の文字と元画像を消す',async()=>{
    const mask:ExportMask={id:'rot',page:0,x:45,y:75,w:130,h:50,angle:-25,style:'fill',strength:10,color:'#000000',opacity:1,label:null};
