@@ -1,6 +1,7 @@
 import { blurMargin, drawLabel, isOpaqueFill, renderPatch, resolveStrength, type PixelSource } from "../fx/effects";
+import { drawFrame } from "../fx/frames";
 import { clampRect, maskBounds, maskCorners } from "../model/geometry";
-import type { Level, MaskStyle, Rect, Rot } from "../model/types";
+import type { Level, MaskStyle, Rect, Rot, TextFrame } from "../model/types";
 import type { PageBitmap } from "./bitmaps";
 
 export interface PaintMask extends Rect {
@@ -91,7 +92,7 @@ function maskPatch(bmp: PageBitmap, m: PaintMask, shape: PaintMask = m): HTMLCan
   return c;
 }
 
-/** マスクの効果をキャンバスに描く（キャンバスはページ画像と同じ大きさ・向き） */
+/** マスクの効果と、テキスト枠をキャンバスに描く（キャンバスはページ画像と同じ大きさ・向き）。枠はマスクの上に重ねる */
 export function paintMasks(
   canvas: HTMLCanvasElement,
   bmp: PageBitmap | undefined,
@@ -99,12 +100,13 @@ export function paintMasks(
   rot: Rot,
   pageW: number,
   pageH: number,
+  frames: TextFrame[] = [],
 ) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  if (!bmp || !masks.length) return;
+  if (!bmp || (!masks.length && !frames.length)) return;
   ctx.setTransform(...baseToView(rot, pageW, pageH, bmp.scale));
   ctx.imageSmoothingEnabled = false;
   for (const raw of masks) {
@@ -132,6 +134,8 @@ export function paintMasks(
     if (patch) ctx.drawImage(patch, m.x, m.y, m.w, m.h);
     ctx.restore();
   }
+  ctx.imageSmoothingEnabled = true;
+  for (const f of frames) if (f.w > 0 && f.h > 0) drawFrame(ctx, f);
 }
 
 /** ページ画像（元の向き）を回転して描く */

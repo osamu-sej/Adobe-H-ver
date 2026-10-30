@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { DocEntry, DocLayout, Level, Mask, MaskStyle, Rect, Rot, SnapMode, Tool } from "./types";
+import type { DocEntry, DocLayout, Level, Mask, MaskStyle, Rect, Rot, SnapMode, TextFrame, Tool } from "./types";
 import { addRot } from "./geometry";
 import { cloudKey } from "./cloudOcr";
 import { moveBlock, trimSelection, type PageSel } from "./pageSelection";
@@ -8,6 +8,8 @@ export interface Snapshot {
   docOrder: string[];
   layouts: Record<string, DocLayout>;
   masks: Mask[];
+  /** テキスト枠（マスクとは別のもの） */
+  frames: TextFrame[];
 }
 
 export interface SearchHit {
@@ -62,6 +64,10 @@ interface AppState extends Snapshot {
   fillOpacity: number;
   label: string | null;
   selection: string[];
+  /** 選択中のテキスト枠（マスクの選択とは同時に持たない） */
+  frameSel: string[];
+  /** 文字を入力中のテキスト枠。insert は、選んだ枠に文字キーを押して入力を始めたときの最初の1文字 */
+  frameEdit: { id: string; insert?: string; fresh?: boolean } | null;
   /** 選択中のマスクの上に操作ツールバーを出すか（作った直後は出さない） */
   toolbar: boolean;
   zoom: number;
@@ -109,6 +115,7 @@ export const useStore = create<AppState>(() => ({
   docOrder: [],
   layouts: {},
   masks: [],
+  frames: [],
   docs: {},
   past: [],
   future: [],
@@ -123,6 +130,8 @@ export const useStore = create<AppState>(() => ({
   fillOpacity: 1,
   label: null,
   selection: [],
+  frameSel: [],
+  frameEdit: null,
   toolbar: false,
   zoom: 1.4,
   fitWidth: true,
@@ -157,7 +166,7 @@ const set = useStore.setState;
 
 function snapshot(): Snapshot {
   const s = get();
-  return { docOrder: s.docOrder, layouts: s.layouts, masks: s.masks };
+  return { docOrder: s.docOrder, layouts: s.layouts, masks: s.masks, frames: s.frames };
 }
 
 const HISTORY_LIMIT = 300;
@@ -187,7 +196,7 @@ export function endGesture() {
   const g = get().gesture;
   if (!g) return;
   const now = snapshot();
-  const changed = g.masks !== now.masks || g.layouts !== now.layouts || g.docOrder !== now.docOrder;
+  const changed = g.masks !== now.masks || g.frames !== now.frames || g.layouts !== now.layouts || g.docOrder !== now.docOrder;
   set((s) => ({
     gesture: null,
     ...(changed ? { past: [...s.past.slice(-HISTORY_LIMIT), g], future: [], editedAt: Date.now() } : {}),
@@ -209,6 +218,7 @@ export function undo() {
     past: s.past.slice(0, -1),
     future: [snapshot(), ...s.future],
     selection: s.selection.filter((id) => prev.masks.some((m) => m.id === id)),
+    frameSel: s.frameSel.filter((id) => prev.frames.some((f) => f.id === id)),
     pageSel: trimSelection(s.pageSel, s.pageSel && prev.layouts[s.pageSel.docId]?.order),
     editedAt: Date.now(),
   });
@@ -224,6 +234,7 @@ export function redo() {
     past: [...s.past, snapshot()],
     future: s.future.slice(1),
     selection: s.selection.filter((id) => next.masks.some((m) => m.id === id)),
+    frameSel: s.frameSel.filter((id) => next.frames.some((f) => f.id === id)),
     pageSel: trimSelection(s.pageSel, s.pageSel && next.layouts[s.pageSel.docId]?.order),
     editedAt: Date.now(),
   });
@@ -232,12 +243,13 @@ export function redo() {
 
 // ---- 文書 ----
 
-export function registerDoc(doc: DocEntry, layout: DocLayout, masks: Mask[] = []) {
+export function registerDoc(doc: DocEntry, layout: DocLayout, masks: Mask[] = [], frames: TextFrame[] = []) {
   // 開いた操作そのものはUndoの対象にしない（過去の履歴にも追加しておく）
   const add = (s: Snapshot): Snapshot => ({
     docOrder: [...s.docOrder, doc.id],
     layouts: { ...s.layouts, [doc.id]: layout },
     masks: [...s.masks, ...masks],
+    frames: [...s.frames, ...frames],
   });
   set((s) => ({
     docs: { ...s.docs, [doc.id]: doc },
@@ -251,7 +263,7 @@ export function removeDoc(docId: string) {
   const strip = (s: Snapshot): Snapshot => {
     const layouts = { ...s.layouts };
     delete layouts[docId];
-    return { docOrder: s.docOrder.filter((d) => d !== docId), layouts, masks: s.masks.filter((m) => m.docId !== docId) };
+    return { docOrder: s.docOrder.filter((d) => d !== docId), layouts, masks: s.masks.filter((m) => m.docId !== docId), frames: s.frames.filter((f) => f.docId !== docId) };
   };
   set((s) => {
     const docs = { ...s.docs };
@@ -262,6 +274,8 @@ export function removeDoc(docId: string) {
       past: s.past.map(strip),
       future: s.future.map(strip),
       selection: s.selection.filter((id) => s.masks.find((m) => m.id === id)?.docId !== docId),
+      frameSel: s.frameSel.filter((id) => s.frames.find((f) => f.id === id)?.docId !== docId),
+      frameEdit: s.frameEdit && s.frames.find((f) => f.id === s.frameEdit!.id)?.docId === docId ? null : s.frameEdit,
       current: s.current?.docId === docId ? null : s.current,
       pageSel: s.pageSel?.docId === docId ? null : s.pageSel,
       search: { ...s.search, hits: s.search.hits.filter((h) => h.docId !== docId) },
@@ -280,7 +294,7 @@ export function newMaskId() {
 export function addMasks(masks: Mask[], select = true) {
   if (!masks.length) return;
   commit((s) => ({ masks: [...s.masks, ...masks] }));
-  if (select) set({ selection: masks.map((m) => m.id), toolbar: false });
+  if (select) set({ selection: masks.map((m) => m.id), frameSel: [], toolbar: false });
 }
 
 export function updateMasks(ids: string[], patch: Partial<Mask> | ((m: Mask) => Partial<Mask>)) {
@@ -299,7 +313,70 @@ export function deleteMasks(ids: string[]) {
 }
 
 export function select(ids: string[], toolbar = true) {
-  set({ selection: ids, toolbar: toolbar && ids.length > 0 });
+  set({ selection: ids, frameSel: [], toolbar: toolbar && ids.length > 0 });
+}
+
+// ---- テキスト枠 ----
+
+let frameSeq = 0;
+export function newFrameId() {
+  return `t${Date.now().toString(36)}${(frameSeq++).toString(36)}`;
+}
+
+/** 枠を選ぶ（マスクの選択は外す）。空なら枠の選択を外す */
+export function selectFrames(ids: string[]) {
+  set(ids.length ? { frameSel: ids, selection: [], toolbar: false } : { frameSel: [] });
+}
+
+/** 枠を足して選ぶ。ドラッグ中などの途中（gesture）なら履歴には積まない */
+export function addFrame(frame: TextFrame) {
+  const add = (s: Snapshot) => ({ frames: [...s.frames, frame] });
+  if (get().gesture) updateGesture(add);
+  else commit(add);
+  selectFrames([frame.id]);
+}
+
+/** 枠の設定を変える。文字の入力中など gesture の途中なら履歴には積まない（終わったときにまとめて1回） */
+export function patchFrames(ids: string[], patch: Partial<TextFrame> | ((f: TextFrame) => Partial<TextFrame>)) {
+  if (!ids.length) return;
+  const idSet = new Set(ids);
+  const apply = (s: Snapshot) => ({
+    frames: s.frames.map((f) => (idSet.has(f.id) ? { ...f, ...(typeof patch === "function" ? patch(f) : patch) } : f)),
+  });
+  if (get().gesture) updateGesture(apply);
+  else commit(apply);
+}
+
+/**
+ * 枠の中の文字の入力を始める。入力が終わるまでの変更（文字・大きさなど）は履歴に積まず、終わったときに1回にまとめる。
+ * fresh は、ツールで作ったばかりの枠（何も入れずに終えたら、枠ごとなかったことにする）
+ */
+export function startFrameEdit(id: string, opts: { insert?: string; fresh?: boolean } = {}) {
+  if (!get().frames.some((f) => f.id === id)) return;
+  beginGesture();
+  set({ frameEdit: { id, ...opts }, frameSel: [id], selection: [], toolbar: false });
+}
+
+/** 文字の入力を終える */
+export function finishFrameEdit() {
+  const e = get().frameEdit;
+  if (!e) return;
+  const f = get().frames.find((x) => x.id === e.id);
+  set({ frameEdit: null });
+  if (e.fresh && !f?.text.trim()) {
+    cancelGesture();
+    set({ frameSel: [] });
+  } else endGesture();
+}
+
+export function deleteFrames(ids: string[]) {
+  if (!ids.length) return;
+  const idSet = new Set(ids);
+  commit((s) => ({ frames: s.frames.filter((f) => !idSet.has(f.id)) }));
+  set((s) => ({
+    frameSel: s.frameSel.filter((id) => !idSet.has(id)),
+    frameEdit: s.frameEdit && idSet.has(s.frameEdit.id) ? null : s.frameEdit,
+  }));
 }
 
 // ---- ページ操作 ----

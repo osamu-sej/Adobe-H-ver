@@ -151,6 +151,17 @@ const SHORTCUTS: [string, [string, string][]][] = [
     ],
   ],
   [
+    "テキスト枠（Tで作る。マスクとは別）",
+    [
+      ["T → ドラッグ（またはクリック）", "ページに枠を作って、そのまま文字を入力"],
+      ["枠をダブルクリック / Enter / F2", "枠の中の文字を入力（枠を選んで文字キーでも始まる）"],
+      ["Esc / 枠の外をクリック", "入力を終える（枠は選んだまま）"],
+      ["Ctrl+Shift+> / <（Ctrl+] / [）", "文字を大きく / 小さく。サイズ欄に数字を入れても変えられる"],
+      ["Ctrl + B", "太字"],
+      ["Delete / 矢印キー", "枠を削除 / 動かす（Shiftで10pt）"],
+    ],
+  ],
+  [
     "検索・書き出し",
     [
       ["Ctrl + F", "検索して隠す（プリセットあり）"],
@@ -163,7 +174,7 @@ const SHORTCUTS: [string, [string, string][]][] = [
   [
     "表示・ページ",
     [
-      ["M / V / H", "マスク / 選択 / 手のひらツール"],
+      ["M / V / T / H", "マスク / 選択 / テキスト枠 / 手のひらツール"],
       ["Space（押しながら）", "一時的に手のひら"],
       ["Ctrl + ホイール", "カーソル位置でズーム"],
       ["Ctrl + 0 / Ctrl + 9", "幅に合わせる / ページ全体"],
@@ -338,7 +349,7 @@ export function SafetyDialog() {
           <section className="safety-sec">
             <h3>この端末に残るもの</h3>
             <p>
-              作業の自動保存として、<b>ファイル名とマスクの位置だけ</b>がこのブラウザに残ります（PDF本体と隠した文字は残りません）。設定でAPIキーを入れた場合は、APIキーと今月送った枚数も残ります（設定で消去できます）。共用のパソコンでは、使い終わったら消去してください。
+              作業の自動保存として、<b>ファイル名とマスクの位置（テキスト枠に入れた文字も）だけ</b>がこのブラウザに残ります（PDF本体と隠した文字は残りません）。設定でAPIキーを入れた場合は、APIキーと今月送った枚数も残ります（設定で消去できます）。共用のパソコンでは、使い終わったら消去してください。
             </p>
             <button
               className="btn ghost sm"
@@ -449,6 +460,8 @@ export function StatusBar() {
   const snap = useStore((s) => s.snap);
   const peek = useStore((s) => s.peek);
   const selection = useStore((s) => s.selection.length);
+  const frameSel = useStore((s) => s.frameSel.length);
+  const editing = useStore((s) => !!s.frameEdit);
   useStore((s) => s.textVersion);
   const ocr = useStore((s) => s.ocr);
   const keySet = useStore((s) => s.cloudKeySet);
@@ -464,6 +477,9 @@ export function StatusBar() {
 
   let hint = "";
   if (peek) hint = "原本を表示中（マスクは書き出し時に適用されます）";
+  else if (editing) hint = "文字を入力中 · Esc か枠の外をクリックで終了 · Ctrl+Shift+> / < で文字サイズ · Ctrl+B で太字";
+  else if (frameSel) hint = "Enter か ダブルクリックで文字を入力 · Ctrl+Shift+> / < で文字サイズ · Delete で削除 · 矢印で微調整 · Esc で選択解除";
+  else if (tool === "text") hint = "ドラッグ（またはクリック）でテキスト枠をつくって、そのまま文字を入力できます";
   else if (tool === "hand") hint = "ドラッグでスクロール";
   else if (tool === "select") hint = "クリックで選択 · ドラッグで範囲選択 · Delete で削除 · 矢印で微調整";
   else if (selection) hint = "1〜3 で隠し方を変更 · [ ] で程度（弱・中・強） · Delete で削除 · 矢印で微調整 · Esc で選択解除";

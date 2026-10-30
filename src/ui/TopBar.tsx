@@ -20,6 +20,7 @@ import {
   IconEye,
   IconFolderOpen,
   IconHand,
+  IconTextBox,
   IconHash,
   IconHelp,
   IconSettings,
@@ -44,6 +45,7 @@ import { viewerApi } from "./Viewer";
 const TOOLS: { id: Tool; label: string; key: string; icon: React.ReactNode }[] = [
   { id: "mask", label: "マスク", key: "M", icon: <IconMask /> },
   { id: "select", label: "選択", key: "V", icon: <IconPointer /> },
+  { id: "text", label: "テキスト枠", key: "T", icon: <IconTextBox /> },
   { id: "hand", label: "手のひら", key: "H", icon: <IconHand /> },
 ];
 

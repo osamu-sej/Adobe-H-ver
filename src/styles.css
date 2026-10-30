@@ -2189,3 +2189,161 @@ button.sb-privacy.cloud:hover {
   color: var(--ok);
   font-weight: 600;
 }
+
+/* テキスト枠 */
+.cur-text {
+  cursor: crosshair;
+}
+.frame-box {
+  position: absolute;
+  cursor: move;
+}
+.frame-box:hover {
+  outline: 1.5px dashed var(--accent);
+  outline-offset: 1px;
+}
+.frame-box.selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+.frame-box.editing {
+  cursor: text;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.frame-editor {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+}
+.frame-editor textarea {
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border: 0;
+  outline: 0;
+  resize: none;
+  overflow: hidden;
+  box-sizing: border-box;
+  white-space: pre-wrap;
+  line-break: anywhere;
+  overflow-wrap: anywhere;
+}
+.frame-toolbar {
+  gap: 3px;
+}
+.frame-toolbar .sel-count {
+  min-width: 0;
+}
+.size-box {
+  display: flex;
+  align-items: center;
+}
+.size-input {
+  width: 38px;
+  height: 28px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-right: 0;
+  border-radius: 6px 0 0 6px;
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: center;
+}
+.size-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.size-drop {
+  width: 18px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 0 6px 6px 0;
+  font-size: 10px;
+}
+.size-list {
+  min-width: 0;
+  width: 64px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+  gap: 1px;
+}
+.size-item {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.size-item:hover {
+  background: var(--accent-soft);
+}
+.size-item.on {
+  font-weight: 700;
+  color: var(--accent);
+}
+.size-step {
+  gap: 0;
+  align-items: baseline;
+  justify-content: center;
+}
+.size-step .a-small {
+  font-size: 12px;
+  font-weight: 700;
+}
+.size-step .a-big {
+  font-size: 17px;
+  font-weight: 700;
+}
+.size-step .a-sign {
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 1px;
+}
+.tb-btn.bold {
+  font-weight: 800;
+  font-family: serif;
+  font-size: 16px;
+}
+.color-a {
+  font-weight: 800;
+  font-size: 15px;
+  line-height: 1;
+  padding-bottom: 1px;
+  border-bottom: 3px solid;
+}
+.frame-toolbar .fill-swatch {
+  width: 16px;
+  height: 16px;
+}
+.frame-toolbar .fill-swatch.none {
+  background: linear-gradient(135deg, #fff 45%, #d92d20 45% 55%, #fff 55%);
+}
+.line-swatch {
+  display: inline-block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 2px solid #374151;
+  border-radius: 3px;
+}
+.line-swatch.none {
+  border-style: dashed;
+  border-color: #9ca3af;
+}
+.pop-note {
+  font-size: 11.5px;
+  color: var(--muted, #6b7280);
+  line-height: 1.5;
+}

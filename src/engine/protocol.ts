@@ -1,4 +1,4 @@
-import type { DocMeta, MaskStyle, PageInfo, Rect, Rot } from "../model/types";
+import type { DocMeta, MaskStyle, PageInfo, Rect, Rot, TextFrame } from "../model/types";
 
 export interface OpenResult {
   needsPassword: boolean;
@@ -68,6 +68,9 @@ export interface ExportMask extends Rect {
   text?: string;
 }
 
+/** 書き出すテキスト枠（ページの上に画像として重ねる） */
+export type ExportFrame = Omit<TextFrame, "docId">;
+
 export interface ExportDoc {
   docId: string;
   /** 書き出すファイル名（拡張子込み） */
@@ -75,6 +78,7 @@ export interface ExportDoc {
   order: number[];
   rot: Record<number, Rot>;
   masks: ExportMask[];
+  frames?: ExportFrame[];
 }
 
 export interface Permissions {
@@ -155,6 +159,8 @@ export interface ExportFile {
   bytes: Uint8Array;
   pages: number;
   masks: number;
+  /** 書き込んだテキスト枠の数 */
+  frames?: number;
   report: VerifyReport;
 }
 
