@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { DocEntry, DocLayout, Level, Mask, MaskStyle, Rect, Rot, SnapMode, Tool } from "./types";
 import { addRot } from "./geometry";
 import { cloudKey } from "./cloudOcr";
+import { moveBlock, trimSelection, type PageSel } from "./pageSelection";
 
 export interface Snapshot {
   docOrder: string[];
@@ -70,6 +71,8 @@ interface AppState extends Snapshot {
   sidebar: boolean;
   chrome: boolean;
   current: PageRef | null;
+  /** ページ一覧（サムネイル）で選んでいるページ。Undo の対象ではない */
+  pageSel: PageSel | null;
   scrollTarget: (PageRef & { rect?: Rect; nonce: number }) | null;
   textVersion: number;
 
@@ -128,6 +131,7 @@ export const useStore = create<AppState>(() => ({
   sidebar: true,
   chrome: true,
   current: null,
+  pageSel: null,
   scrollTarget: null,
   textVersion: 0,
 
@@ -205,6 +209,7 @@ export function undo() {
     past: s.past.slice(0, -1),
     future: [snapshot(), ...s.future],
     selection: s.selection.filter((id) => prev.masks.some((m) => m.id === id)),
+    pageSel: trimSelection(s.pageSel, s.pageSel && prev.layouts[s.pageSel.docId]?.order),
     editedAt: Date.now(),
   });
   return true;
@@ -219,6 +224,7 @@ export function redo() {
     past: [...s.past, snapshot()],
     future: s.future.slice(1),
     selection: s.selection.filter((id) => next.masks.some((m) => m.id === id)),
+    pageSel: trimSelection(s.pageSel, s.pageSel && next.layouts[s.pageSel.docId]?.order),
     editedAt: Date.now(),
   });
   return true;
@@ -257,6 +263,7 @@ export function removeDoc(docId: string) {
       future: s.future.map(strip),
       selection: s.selection.filter((id) => s.masks.find((m) => m.id === id)?.docId !== docId),
       current: s.current?.docId === docId ? null : s.current,
+      pageSel: s.pageSel?.docId === docId ? null : s.pageSel,
       search: { ...s.search, hits: s.search.hits.filter((h) => h.docId !== docId) },
       suggestion: null,
     };
@@ -311,11 +318,29 @@ export function deletePages(docId: string, pages: number[]) {
   const s = get();
   const l = s.layouts[docId];
   if (!l) return false;
-  const remaining = l.order.filter((p) => !pages.includes(p));
-  if (remaining.length === 0) return false;
+  const gone = new Set(pages);
+  const remaining = l.order.filter((p) => !gone.has(p));
+  if (remaining.length === l.order.length || remaining.length === 0) return false;
   commit((snap) => ({
     layouts: { ...snap.layouts, [docId]: { ...snap.layouts[docId], order: remaining } },
   }));
+  // 削除したページは選択から外す
+  set((st) => ({ pageSel: st.pageSel?.docId === docId ? trimSelection(st.pageSel, remaining) : st.pageSel }));
+  return true;
+}
+
+/** ページ一覧の選択を変える（null で解除） */
+export function setPageSel(sel: PageSel | null) {
+  set({ pageSel: sel && sel.pages.length ? sel : null });
+}
+
+/** pages をひとまとめにして、表示順で at 番目（0〜ページ数）の前へ動かす。動かさなかったときは false */
+export function movePages(docId: string, pages: number[], at: number) {
+  const l = get().layouts[docId];
+  if (!l) return false;
+  const order = moveBlock(l.order, pages, at);
+  if (order.length === l.order.length && order.every((p, i) => p === l.order[i])) return false;
+  commit((s) => ({ layouts: { ...s.layouts, [docId]: { ...s.layouts[docId], order } } }));
   return true;
 }
 

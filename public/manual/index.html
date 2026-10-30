@@ -1022,12 +1022,14 @@ footer .build { font-size: 12px; font-variant-numeric: tabular-nums; }
       <div class="split rev">
         <div>
           <ol class="howto">
-            <li>左の<b>ページ一覧</b>でページをクリックすると、そのページへ移動します。</li>
-            <li>サムネイルに<b>マウスを乗せる</b>と、回転・削除のボタンが出ます。</li>
-            <li>サムネイルを<b>ドラッグ</b>すると並べ替えられます。</li>
+            <li>左の<b>ページ一覧</b>でページをクリックすると、そのページを選んで本文もそこへ移動します（PowerPoint のスライド一覧と同じ操作です）。</li>
+            <li><kbd>Ctrl</kbd>（Mac は <kbd>⌘</kbd>）+クリックで<b>追加・解除</b>、<kbd>Shift</kbd>+クリックで<b>範囲選択</b>、<kbd>Ctrl</kbd>+<kbd>A</kbd> で<b>すべて選択</b>。選ぶとバーに「○ページを選択中」と出ます。</li>
+            <li>選んだページは <kbd>Delete</kbd> で<b>まとめて削除</b>（1ページだけでも同じ）。<b>右クリック</b>でも、削除・回転・すべて選択ができます。消したあとは <kbd>Ctrl</kbd>+<kbd>Z</kbd> かメッセージの「元に戻す」で戻せます。</li>
+            <li>サムネイルに<b>マウスを乗せる</b>と、回転・削除のボタンが出ます。複数選んでいるときは、選んだページすべてが対象です。</li>
+            <li>サムネイルを<b>ドラッグ</b>すると並べ替えられます。複数選んでいれば、まとめて動きます。</li>
             <li>一覧の上の <b>＋</b> でPDFを追加。複数のファイルは書き出すときに<b>1つに結合</b>もできます。</li>
           </ol>
-          <div class="note"><span class="ni">⌨️</span><span>表示中のページは <kbd>Ctrl</kbd>+<kbd>L</kbd> 左回転、<kbd>Ctrl</kbd>+<kbd>R</kbd> 右回転、<kbd>Ctrl</kbd>+<kbd>D</kbd> 削除。</span></div>
+          <div class="note"><span class="ni">⌨️</span><span>表示中のページは <kbd>Ctrl</kbd>+<kbd>L</kbd> 左回転、<kbd>Ctrl</kbd>+<kbd>R</kbd> 右回転、<kbd>Ctrl</kbd>+<kbd>D</kbd> 削除。すべてのページを選んだときは削除できません（ファイルごと閉じてください）。</span></div>
         </div>
         <div class="frame" style="max-width:260px;justify-self:center">
           <img src="img/thumbs.webp" width="352" height="1120" alt="ページ一覧。マウスを乗せたサムネイルに回転と削除のボタン" loading="lazy" />
@@ -1130,6 +1132,8 @@ footer .build { font-size: 12px; font-variant-numeric: tabular-nums; }
           <div class="krow" data-k="space"><span>押しながらドラッグでスクロール</span><span class="kk"><kbd>Space</kbd></span></div>
           <div class="krow" data-k="ctrl+= ctrl+- ctrl+0"><span>拡大 ／ 縮小 ／ 幅に合わせる</span><span class="kk"><kbd>Ctrl</kbd><kbd>+</kbd><kbd>-</kbd><kbd>0</kbd></span></div>
           <div class="krow" data-k="ctrl+l ctrl+r ctrl+d"><span>表示中のページを回転 ／ 削除</span><span class="kk"><kbd>Ctrl</kbd><kbd>L</kbd><kbd>R</kbd><kbd>D</kbd></span></div>
+          <div class="krow" data-k="page-list-select"><span>ページ一覧：追加選択 ／ 範囲選択</span><span class="kk"><kbd>Ctrl</kbd>+クリック <kbd>Shift</kbd>+クリック</span></div>
+          <div class="krow" data-k="page-list-delete"><span>ページ一覧：選んだページを削除</span><span class="kk"><kbd>Delete</kbd></span></div>
           <div class="krow" data-k="f tab"><span>全画面 ／ パネルを隠す</span><span class="kk"><kbd>F</kbd><kbd>Tab</kbd></span></div>
           <div class="krow" data-k="?"><span>使い方とショートカット</span><span class="kk"><kbd>?</kbd></span></div>
         </div>
