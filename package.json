@@ -1,7 +1,7 @@
 {
   "name": "kakusu",
   "private": true,
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "PDFの数字・個人情報をサクサク隠せる、ブラウザ完結のモザイク・墨消しツール",
   "type": "module",
   "license": "AGPL-3.0-or-later",

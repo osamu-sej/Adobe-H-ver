@@ -1,3 +1,4 @@
+import type { PSM } from "tesseract.js";
 import { isDigit } from "./normalize";
 import type { PageText } from "./types";
 
@@ -35,9 +36,11 @@ export interface OcrLine {
 
 /**
  * 文字認識（Tesseract）の設定。白黒に分けるしきい値を、ページ全体ではなく場所ごとに決める（Sauvola）。
- * 色の付いたセルや濃い見出しが混じった表でも、文字を背景から分けやすい
+ * 色の付いたセルや濃い見出しが混じった表でも、文字を背景から分けやすい。
+ * 行の分け方は、ページを1つのかたまりの文章として読む（6）。自動の段組み判定（3）は、行の詰まった表を
+ * 細切れの段に分けてほとんど読めなくなる。散在する文字向けの分割（11）で読んだ後も、この値に戻す
  */
-export const OCR_PARAMS = { thresholding_method: "2" };
+export const OCR_PARAMS = { thresholding_method: "2", tessedit_pageseg_mode: "6" as PSM };
 
 /** 画像の画素 → 元ページ空間（pt）の変換行列 [a, b, c, d, e, f] */
 export type Matrix6 = [number, number, number, number, number, number];
@@ -1041,7 +1044,7 @@ export function ocrToPageText(lines: OcrLine[], toPage: Matrix6, img?: GrayImage
     restoreGapDots(words.filter((g) => snappedWords.has(g)));
     words.sort((a, b) => a[0].x0 - b[0].x0);
     // 行の中の文字を並べ、単語の切れ目を覚えておく
-    const seq: { g: Glyph; text: string; first: boolean }[] = [];
+    const seq: { g: Glyph; text: string; first: boolean; table: boolean; formatted: boolean }[] = [];
     for (const all of words) {
       // 「_」は表の点線の枠の切れ端を読んだもの。単語の端にあるもの、離れた数字の間（隣のセルとの境目）にあるものは捨てる。
       // 数字のすぐ間にあるものは「-」の読み違いなので残す（あとで「-」に直す）
@@ -1053,10 +1056,13 @@ export function ocrToPageText(lines: OcrLine[], toPage: Matrix6, img?: GrayImage
       });
       if (!glyphs.length) continue;
       const fixed = fixConfusables(glyphs.map((g) => g.text));
-      glyphs.forEach((g, i) => seq.push({ g, text: fixed[i], first: i === 0 }));
+      // 数字と記号だけの単語（表のセルの数値など）と、小数点・カンマ・「%」の付いたもの（電話番号の区切りの数字には付かない）
+      const table = fixed.every((t) => digit(t) || /^[,.\-:/%▲△+()（）]$/.test(t));
+      const formatted = fixed.some((t) => /^[,.%]$/.test(t));
+      glyphs.forEach((g, i) => seq.push({ g, text: fixed[i], first: i === 0, table, formatted }));
     }
     const numeric = (t: string | undefined) => digit(t) || (!!t && /^[,.\-:/]$/.test(t));
-    seq.forEach(({ g, text, first }, i) => {
+    seq.forEach(({ g, text, first, table, formatted }, i) => {
       const prev = seq[i - 1];
       const next = seq[i + 1];
       const hh = Math.max(g.em, prev ? prev.g.em : 0);
@@ -1065,8 +1071,13 @@ export function ocrToPageText(lines: OcrLine[], toPage: Matrix6, img?: GrayImage
       const inNumber = prev && ((numeric(prev.text) && digit(text)) || (digit(prev.text) && numeric(text)));
       // 日本語の文字の隣（「4月 1日」「〒 102」など）も、狭い隙間には空白を入れない（検索で見つかるように）
       const japanese = prev && (CJK.test(prev.text) || CJK.test(text));
-      // 1つの単語に読まれていても、数字の間が広く空いていれば隣のセルの数字（「100.9」と「103.1」など）
-      const cellGap = !first && inNumber && gap > hh * NUMBER_CELL_GAP;
+      // 数字の間が広く空いていれば隣のセルの数字（「100.9」と「103.1」など）。1つの単語に読まれていても分ける。
+      // 別の単語のときは、どちらも数字だけの単語で、片方に小数点などがあるとき（表のセルの数値）。
+      // 文の中の「23日」が「2」と「3日」に分かれたとき、「090 12345678」のように間の空いた電話番号は分けない
+      const cellGap =
+        inNumber &&
+        gap > hh * NUMBER_CELL_GAP &&
+        (!first || (digit(prev.text) && digit(text) && table && prev.table && (formatted || prev.formatted)));
       if (!prev || gap > hh * (first ? CHUNK_GAP : CHUNK_GAP_IN_WORD) || cellGap) line++;
       else if (first && gap > hh * (inNumber || japanese ? NUMBER_SPACE_GAP : SPACE_GAP))
         push(" ", prev.g.x1, Math.min(prev.g.y0, g.y0), g.x0, Math.max(prev.g.y1, g.y1), hh);

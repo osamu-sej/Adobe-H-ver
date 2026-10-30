@@ -445,6 +445,33 @@ describe("インクで読み違いを直す", () => {
     expect(l.words[0].inkMatched).toBe(false);
   });
 
+  it("表のセルの数値（小数など）の単語どうしの間が広ければ、隣のセルの数字として分ける。文の中の数字の続きは分けない", () => {
+    const pair = (second: string) => {
+      const t = ocrToPageText(
+        [
+          {
+            words: [
+              ocrWord([
+                ["1", 100, 118],
+                [".", 122, 126],
+                ["2", 130, 148],
+              ]),
+              ocrWord([...second].map((c, i): [string, number, number] => [c, 168 + i * 22, 186 + i * 22])),
+            ],
+          },
+        ],
+        ID,
+      );
+      return { text: t.chars.join(""), split: t.lines[2] !== t.lines[3] };
+    };
+    expect(pair("34")).toEqual({ text: "1.234", split: true });
+    expect(pair("3日")).toEqual({ text: "1.23日", split: false });
+  });
+
+  it("文字認識は、ページを1つのかたまりの文章として読む設定にする（自動の段組み判定にしない）", () => {
+    expect(OCR_PARAMS.tessedit_pageseg_mode).toBe("6");
+  });
+
   it("くっついた数字のまとまり（「53466」の「46」）があっても、数字の数だけインクがあれば最後の数字を除かない", () => {
     const w = ocrWord([
       ["5", 100, 118],
