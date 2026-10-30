@@ -3,12 +3,17 @@ import { engine } from "./engine/client";
 import { applySuggestion, isPdfFile, maskSearchHits, openFiles } from "./model/actions";
 import {
   beginGesture,
+  deleteFrames,
   deleteMasks,
   deletePages,
   endGesture,
+  finishFrameEdit,
   redo,
   rotatePages,
+  scrollToPage,
   select,
+  selectFrames,
+  startFrameEdit,
   toast,
   undo,
   updateGesture,
@@ -17,6 +22,7 @@ import {
 import { STYLE_ORDER, type SnapMode, type Tool } from "./model/types";
 import { ContextMenu } from "./ui/ContextMenu";
 import { ExportDialog } from "./ui/ExportDialog";
+import { changeFrameSize, setFrameBold } from "./ui/FrameToolbar";
 import { CloudOcrDialog } from "./ui/CloudOcr";
 import { SettingsDialog } from "./ui/Settings";
 import { DropOverlay, EmptyState, HelpOverlay, PasswordDialog, SafetyDialog, StatusBar, SuggestionBar, Toasts } from "./ui/Overlays";
@@ -26,7 +32,7 @@ import { setStyle, stepLevel, toggleFullscreen, TopBar } from "./ui/TopBar";
 import { viewerApi, Viewer } from "./ui/Viewer";
 
 const SNAP_CYCLE: SnapMode[] = ["digits", "text", "free"];
-const TOOL_KEYS: Record<string, Tool> = { m: "mask", v: "select", h: "hand" };
+const TOOL_KEYS: Record<string, Tool> = { m: "mask", v: "select", t: "text", h: "hand" };
 
 function isTyping(e: KeyboardEvent) {
   const t = e.target as HTMLElement | null;
@@ -67,6 +73,14 @@ function handleKeyDown(e: KeyboardEvent, openPicker: () => void) {
     if (e.key === "Enter" && s.panel === "search") {
       e.preventDefault();
       maskSearchHits();
+    } else if (s.frameSel.length && (k === "]" || k === "[" || (e.shiftKey && [">", "<", ".", ","].includes(e.key)))) {
+      // 選んだテキスト枠の文字を大きく・小さく（PowerPoint と同じ Ctrl+Shift+> / <、Ctrl+] / [）
+      e.preventDefault();
+      changeFrameSize(k === "]" || e.key === ">" || e.key === "." ? 1 : -1);
+    } else if (s.frameSel.length && k === "b") {
+      e.preventDefault();
+      const bold = s.frames.filter((f) => s.frameSel.includes(f.id)).every((f) => f.bold);
+      setFrameBold(s.frameSel, !bold);
     } else if (k === "z") {
       e.preventDefault();
       if (e.shiftKey) redo();
@@ -104,6 +118,18 @@ function handleKeyDown(e: KeyboardEvent, openPicker: () => void) {
     return;
   }
   if (e.altKey) return;
+
+  // 枠を1つ選んでいるとき：Enter / F2 で文字の入力。文字キーでは始めない（M V T H P などのショートカットが使えなくなるため）
+  if (s.frameSel.length === 1 && !s.selection.length && !s.suggestion && (e.key === "Enter" || e.key === "F2")) {
+    e.preventDefault();
+    const f = s.frames.find((x) => x.id === s.frameSel[0]);
+    if (f) {
+      // 画面に出ていない（描画範囲の外にある）枠は、まずそこへ動く。入力欄は、枠が描かれたときに出る
+      if (!document.querySelector(`[data-frame-id="${f.id}"]`)) scrollToPage({ docId: f.docId, page: f.page }, f);
+      startFrameEdit(f.id);
+    }
+    return;
+  }
 
   if (TOOL_KEYS[k]) {
     useStore.setState({ tool: TOOL_KEYS[k] });
@@ -148,6 +174,7 @@ function handleKeyDown(e: KeyboardEvent, openPicker: () => void) {
     case "Escape":
       if (s.suggestion) useStore.setState({ suggestion: null });
       else if (s.selection.length) select([]);
+      else if (s.frameSel.length) selectFrames([]);
       else if (s.panel) useStore.setState({ panel: null });
       return;
     case "Delete":
@@ -157,6 +184,11 @@ function handleKeyDown(e: KeyboardEvent, openPicker: () => void) {
         const n = s.selection.length;
         deleteMasks(s.selection);
         toast({ message: `マスク ${n} 件を削除しました`, action: { label: "元に戻す", run: undo } });
+      } else if (s.frameSel.length) {
+        e.preventDefault();
+        const n = s.frameSel.length;
+        deleteFrames(s.frameSel);
+        toast({ message: `テキスト枠 ${n} 件を削除しました`, action: { label: "元に戻す", run: undo } });
       }
       return;
     case "[":
@@ -185,22 +217,33 @@ function handleKeyDown(e: KeyboardEvent, openPicker: () => void) {
     case "ArrowRight":
     case "ArrowUp":
     case "ArrowDown": {
-      if (!s.selection.length) return;
+      if (!s.selection.length && !s.frameSel.length) return;
       e.preventDefault();
       const d = e.shiftKey ? 10 : 1;
       const dx = e.key === "ArrowLeft" ? -d : e.key === "ArrowRight" ? d : 0;
       const dy = e.key === "ArrowUp" ? -d : e.key === "ArrowDown" ? d : 0;
       // 回転したページでは見た目の方向に動かす
       const sel = new Set(s.selection);
+      const selFrames = new Set(s.frameSel);
       beginGesture();
-      updateGesture((snap) => ({
-        masks: snap.masks.map((m) => {
-          if (!sel.has(m.id)) return m;
-          const rot = snap.layouts[m.docId]?.rot[m.page] ?? 0;
-          const [bx, by] = rot === 90 ? [dy, -dx] : rot === 180 ? [-dx, -dy] : rot === 270 ? [-dy, dx] : [dx, dy];
-          return { ...m, x: m.x + bx, y: m.y + by };
-        }),
-      }));
+      updateGesture((snap) => {
+        const shift = (docId: string, page: number): [number, number] => {
+          const rot = snap.layouts[docId]?.rot[page] ?? 0;
+          return rot === 90 ? [dy, -dx] : rot === 180 ? [-dx, -dy] : rot === 270 ? [-dy, dx] : [dx, dy];
+        };
+        return {
+          masks: snap.masks.map((m) => {
+            if (!sel.has(m.id)) return m;
+            const [bx, by] = shift(m.docId, m.page);
+            return { ...m, x: m.x + bx, y: m.y + by };
+          }),
+          frames: snap.frames.map((f) => {
+            if (!selFrames.has(f.id)) return f;
+            const [bx, by] = shift(f.docId, f.page);
+            return { ...f, x: f.x + bx, y: f.y + by };
+          }),
+        };
+      });
       return;
     }
   }
@@ -208,7 +251,8 @@ function handleKeyDown(e: KeyboardEvent, openPicker: () => void) {
 
 function handleKeyUp(e: KeyboardEvent) {
   if (e.key === "p" || e.key === "P") useStore.setState({ peek: false });
-  if (e.key.startsWith("Arrow")) endGesture();
+  // 文字の入力中は、入力欄の矢印キー（入力位置の移動）で、入力のひとまとまりの操作を終えない
+  if (e.key.startsWith("Arrow") && !isTyping(e) && !useStore.getState().frameEdit) endGesture();
 }
 
 export function App() {
@@ -218,6 +262,17 @@ export function App() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const openPicker = () => fileRef.current?.click();
+
+  // 文字の入力を始めたのに入力欄が出ないとき（枠のページが描かれないままのときなど）は、入力を終えて、
+  // 入力のひとまとまりの操作（取り消し・やり直しを止める）を残さない
+  const editing = useStore((s) => s.frameEdit);
+  useEffect(() => {
+    if (!editing) return;
+    const t = window.setTimeout(() => {
+      if (!document.querySelector(".frame-editor")) finishFrameEdit();
+    }, 1000);
+    return () => window.clearTimeout(t);
+  }, [editing]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => handleKeyDown(e, openPicker);

@@ -1,14 +1,20 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {
+  addFrame,
   addMasks,
   beginGesture,
   cancelGesture,
+  deleteFrames,
   deleteMasks,
   deletePages,
   endGesture,
+  finishFrameEdit,
+  newFrameId,
   rotatePages,
   select,
+  selectFrames,
+  startFrameEdit,
   toast,
   undo,
   updateGesture,
@@ -20,10 +26,13 @@ import { maskFrom, suggestSameValues, suggestForSelection } from "../model/actio
 import { rangeRects, rangeText, snapToRange, textUnder, tokenAt, type SnapResult } from "../model/text";
 import { ocrJobMode, ocrSource, ocrState } from "../model/ocr";
 import { ensureText, getText, isOcrPage } from "../model/texts";
-import { STYLE_LABEL, STYLE_ORDER, type Mask, type PageInfo, type Rect, type Rot } from "../model/types";
+import { STYLE_LABEL, STYLE_ORDER, type Mask, type PageInfo, type Rect, type Rot, type TextFrame } from "../model/types";
 import { pageCache, usePageBitmap } from "../render/bitmaps";
 import { paintMasks, paintPage, type PaintMask } from "../render/paint";
+import { FRAME_DEFAULT_SIZE, neededHeight } from "../fx/frames";
 import { openContextMenu, type MenuItem } from "./ContextMenu";
+import { FrameBox } from "./FrameBox";
+import { changeFrameSize, FrameToolbar } from "./FrameToolbar";
 import { IconRotL, IconRotR, IconTrash, IconWand } from "./icons";
 import { SelectionToolbar, STYLE_ICON } from "./SelectionToolbar";
 
@@ -32,7 +41,11 @@ type Drag =
   | { kind: "move"; ids: string[]; start: [number, number]; orig: Map<string, Rect>; moved: boolean }
   | { kind: "resize"; id: string; handle: string; orig: Rect; angle: number; moved: boolean }
   | { kind: "rotate"; id: string; center: [number, number]; start: number; angle: number; moved: boolean }
-  | { kind: "marquee"; start: [number, number]; cur: [number, number]; base: string[] };
+  | { kind: "marquee"; start: [number, number]; cur: [number, number]; base: string[] }
+  | { kind: "frame-create"; start: [number, number]; cur: [number, number]; sx: number; sy: number; moved: boolean }
+  /** edit：動かさずに離したときに文字の入力を始める枠 */
+  | { kind: "frame-move"; ids: string[]; start: [number, number]; orig: Map<string, Rect>; moved: boolean; edit: string | null }
+  | { kind: "frame-resize"; id: string; handle: string; orig: Rect; moved: boolean };
 
 interface Hover {
   key: string;
@@ -62,6 +75,9 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
 
   const masks = useStore(useShallow((s) => s.masks.filter((m) => m.docId === docId && m.page === page)));
   const selection = useStore((s) => s.selection);
+  const frames = useStore(useShallow((s) => s.frames.filter((f) => f.docId === docId && f.page === page)));
+  const frameSel = useStore((s) => s.frameSel);
+  const editingId = useStore((s) => s.frameEdit?.id);
   const toolbarOn = useStore((s) => s.toolbar);
   const tool = useStore((s) => s.tool);
   const peek = useStore((s) => s.peek);
@@ -134,8 +150,10 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
     const h = swap ? bmp.width : bmp.height;
     if (c.width !== w) c.width = w;
     if (c.height !== h) c.height = h;
-    paintMasks(c, bmp, peek ? [] : [...masks, ...previewMasks], rot, info.w, info.h);
-  }, [bmp, masks, previewMasks, peek, rot, info.w, info.h]);
+    // 文字を入力中の枠は、入力欄が代わりに見せる
+    // 原本を表示している間は、マスクも枠も描かない
+    paintMasks(c, bmp, peek ? [] : [...masks, ...previewMasks], rot, info.w, info.h, peek ? [] : frames.filter((f) => f.id !== editingId));
+  }, [bmp, masks, previewMasks, peek, rot, info.w, info.h, frames, editingId]);
 
   const toBase = (clientX: number, clientY: number): [number, number] => {
     const r = overlayRef.current!.getBoundingClientRect();
@@ -151,13 +169,49 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     const st = useStore.getState();
-    if (st.tool === "hand" || (e.target as HTMLElement).closest(".sel-toolbar")) return;
+    if (st.tool === "hand" || (e.target as HTMLElement).closest(".sel-toolbar, .frame-editor")) return;
     e.preventDefault();
+    // 入力中の枠の外を押したら、入力を終える（そのあとの操作は続ける）
+    if (st.frameEdit) finishFrameEdit();
     const p = toBase(e.clientX, e.clientY);
     const el = e.target as HTMLElement;
     const box = el.closest<HTMLElement>("[data-mask-id]");
+    const fbox = el.closest<HTMLElement>("[data-frame-id]");
     overlayRef.current?.setPointerCapture(e.pointerId);
     useStore.setState({ suggestion: null });
+
+    if (fbox) {
+      const id = fbox.dataset.frameId!;
+      const fr = useStore.getState().frames.find((x) => x.id === id);
+      if (!fr) return;
+      if (el.dataset.handle) {
+        if (!useStore.getState().frameSel.includes(id)) selectFrames([id]);
+        setDragBoth({ kind: "frame-resize", id, handle: el.dataset.handle, orig: { x: fr.x, y: fr.y, w: fr.w, h: fr.h }, moved: false });
+        return;
+      }
+      const cur = useStore.getState().frameSel;
+      const wasSole = cur.length === 1 && cur[0] === id;
+      const toggle = e.shiftKey || e.metaKey || e.ctrlKey;
+      let sel = cur;
+      if (toggle) {
+        sel = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+        selectFrames(sel);
+        if (!sel.includes(id)) return;
+      } else if (!cur.includes(id)) {
+        sel = [id];
+        selectFrames(sel);
+      }
+      const here = useStore.getState().frames.filter((x) => sel.includes(x.id) && x.docId === docId && x.page === page);
+      setDragBoth({
+        kind: "frame-move",
+        ids: here.map((x) => x.id),
+        start: p,
+        orig: new Map(here.map((x) => [x.id, { x: x.x, y: x.y, w: x.w, h: x.h }])),
+        moved: false,
+        edit: !toggle && (wasSole || st.tool === "text") ? id : null,
+      });
+      return;
+    }
 
     if (box) {
       const id = box.dataset.maskId!;
@@ -195,6 +249,12 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
         orig.set(sid, { x: mm.x, y: mm.y, w: mm.w, h: mm.h });
       }
       setDragBoth({ kind: "move", ids, start: p, orig, moved: false });
+      return;
+    }
+
+    if (st.tool === "text" && !box) {
+      select([]);
+      setDragBoth({ kind: "frame-create", start: p, cur: p, sx: e.clientX, sy: e.clientY, moved: false });
       return;
     }
 
@@ -282,6 +342,59 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
       updateGesture((s) => ({ masks: s.masks.map((m) => m.id === d.id ? { ...m, ...nb } : m) }));
       return;
     }
+    if (d.kind === "frame-create") {
+      setDragBoth({ ...d, cur: p, moved: d.moved || Math.hypot(e.clientX - d.sx, e.clientY - d.sy) > 4 });
+      return;
+    }
+    if (d.kind === "frame-move") {
+      const dx = p[0] - d.start[0];
+      const dy = p[1] - d.start[1];
+      if (!d.moved && Math.hypot(dx, dy) * zoom < 3) return;
+      if (!d.moved) {
+        beginGesture();
+        dragRef.current = { ...d, moved: true };
+      }
+      updateGesture((s) => ({
+        frames: s.frames.map((f) => {
+          const o = d.orig.get(f.id);
+          if (!o) return f;
+          return {
+            ...f,
+            x: Math.max(-o.w / 2, Math.min(info.w - o.w / 2, o.x + dx)),
+            y: Math.max(-o.h / 2, Math.min(info.h - o.h / 2, o.y + dy)),
+          };
+        }),
+      }));
+      return;
+    }
+    if (d.kind === "frame-resize") {
+      if (!d.moved) {
+        beginGesture();
+        dragRef.current = { ...d, moved: true };
+      }
+      const v = toViewRect(d.orig, rot, info.w, info.h);
+      const r = overlayRef.current!.getBoundingClientRect();
+      const u = (e.clientX - r.left) / zoom;
+      const w = (e.clientY - r.top) / zoom;
+      let x0 = v.x;
+      let y0 = v.y;
+      let x1 = v.x + v.w;
+      let y1 = v.y + v.h;
+      if (d.handle.includes("w")) x0 = u;
+      if (d.handle.includes("e")) x1 = u;
+      if (d.handle.includes("n")) y0 = w;
+      if (d.handle.includes("s")) y1 = w;
+      const nv = normRect(x0, y0, x1, y1);
+      nv.w = Math.max(8, nv.w);
+      nv.h = Math.max(8, nv.h);
+      const nb = clampRect(toBaseRect(nv, rot, info.w, info.h), info.w, info.h);
+      // 幅を変えて文字が入りきらなくなったら、下に広げる
+      const widthChanged = nb.w !== d.orig.w;
+      updateGesture((s) => ({
+        frames: s.frames.map((f) => (f.id === d.id ? { ...f, ...nb, h: widthChanged ? Math.max(nb.h, neededHeight({ ...f, w: nb.w })) : nb.h } : f)),
+      }));
+      return;
+    }
     if (d.kind === "marquee") {
       const nd = { ...d, cur: p };
       setDragBoth(nd);
@@ -298,7 +411,12 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
             area.y < maskBounds(m).y + maskBounds(m).h,
         )
         .map((m) => m.id);
-      select([...new Set([...d.base, ...inside])]);
+      const framesInside = useStore
+        .getState()
+        .frames.filter((f) => f.docId === docId && f.page === page && f.x < area.x + area.w && area.x < f.x + f.w && f.y < area.y + area.h && area.y < f.y + f.h)
+        .map((f) => f.id);
+      if (!inside.length && !d.base.length && framesInside.length) selectFrames(framesInside);
+      else select([...new Set([...d.base, ...inside])]);
     }
   };
 
@@ -319,6 +437,15 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
       return;
     }
     if (d.kind === "marquee") return;
+    if (d.kind === "frame-move" || d.kind === "frame-resize") {
+      if (d.moved) endGesture();
+      else if (d.kind === "frame-move" && d.edit) startFrameEdit(d.edit);
+      return;
+    }
+    if (d.kind === "frame-create") {
+      createFrame(d);
+      return;
+    }
     // マスクを作る
     if (!d.moved) {
       const p = toBase(e.clientX, e.clientY);
@@ -345,6 +472,32 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
     if (!created.length) return;
     addMasks(created);
     if (!pv[0].free) suggestSameValues(pv.map((s) => s.text));
+  };
+
+  /** テキスト枠をつくって、すぐ文字を入力できるようにする。何も入れずに終えたら枠ごとなかったことにする */
+  const createFrame = (d: Extract<Drag, { kind: "frame-create" }>) => {
+    const dragged = d.moved ? clampRect(normRect(d.start[0], d.start[1], d.cur[0], d.cur[1]), info.w, info.h) : null;
+    const big = dragged && dragged.w * zoom >= 12 && dragged.h * zoom >= 8;
+    const base = {
+      id: newFrameId(),
+      docId,
+      page,
+      text: "",
+      size: FRAME_DEFAULT_SIZE,
+      bold: false,
+      color: "#000000",
+      align: "left" as const,
+      fill: null,
+      line: "#374151",
+    };
+    const w = big ? dragged.w : Math.min(160, info.w);
+    const x = big ? dragged.x : Math.max(0, Math.min(info.w - w, d.start[0]));
+    const y0 = big ? dragged.y : d.start[1];
+    const h = Math.max(big ? dragged.h : 0, neededHeight({ ...base, w }));
+    const frame: TextFrame = { ...base, x, y: Math.max(0, Math.min(info.h - h, y0)), w, h };
+    beginGesture();
+    addFrame(frame);
+    startFrameEdit(frame.id, { fresh: true });
   };
 
   const computePreview = (d: Extract<Drag, { kind: "create" }>): (SnapResult & { free?: boolean })[] => {
@@ -375,7 +528,8 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
   };
 
   const onPointerCancel = () => {
-    if (dragRef.current?.kind === "move" || dragRef.current?.kind === "resize" || dragRef.current?.kind === "rotate") cancelGesture();
+    const k = dragRef.current?.kind;
+    if (k === "move" || k === "resize" || k === "rotate" || k === "frame-move" || k === "frame-resize") cancelGesture();
     setDragBoth(null);
     setPreview([]);
   };
@@ -392,12 +546,38 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
     return () => window.removeEventListener("keydown", onKey, true);
   });
 
+  const onDoubleClick = (e: React.MouseEvent) => {
+    const el = e.target as HTMLElement;
+    const fbox = el.closest<HTMLElement>("[data-frame-id]");
+    if (fbox && !el.closest(".frame-editor") && !useStore.getState().frameEdit) startFrameEdit(fbox.dataset.frameId!);
+  };
+
   const onContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     const st = useStore.getState();
     const box = (e.target as HTMLElement).closest<HTMLElement>("[data-mask-id]");
+    const fbox = (e.target as HTMLElement).closest<HTMLElement>("[data-frame-id]");
     const items: MenuItem[] = [];
-    if (box) {
+    if (fbox) {
+      const id = fbox.dataset.frameId!;
+      if (st.frameEdit) finishFrameEdit();
+      const ids = st.frameSel.includes(id) ? st.frameSel : [id];
+      if (!st.frameSel.includes(id)) selectFrames([id]);
+      items.push({ label: "文字を入力", shortcut: "Enter", disabled: ids.length !== 1, run: () => startFrameEdit(id) });
+      items.push({ label: "文字を大きく", shortcut: "Ctrl+Shift+>", run: () => changeFrameSize(1) });
+      items.push({ label: "文字を小さく", shortcut: "Ctrl+Shift+<", run: () => changeFrameSize(-1) });
+      items.push({ separator: true, label: "" });
+      items.push({
+        label: `削除（${ids.length}件）`,
+        shortcut: "Del",
+        icon: <IconTrash size={15} />,
+        danger: true,
+        run: () => {
+          deleteFrames(ids);
+          toast({ message: `テキスト枠 ${ids.length} 件を削除しました`, action: { label: "元に戻す", run: undo } });
+        },
+      });
+    } else if (box) {
       const id = box.dataset.maskId!;
       const ids = st.selection.includes(id) ? st.selection : [id];
       if (!st.selection.includes(id)) select([id]);
@@ -444,11 +624,25 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
     const below = top < 56;
     toolbarPos = { left: Math.max(150, Math.min(cssW - 150, (left + right) / 2)), top: below ? bottom + 10 : top - 42, below };
   }
+  const frameSet = new Set(frameSel);
+  const selectedFrames = frames.filter((f) => frameSet.has(f.id));
+  const movingFrames = drag?.kind === "frame-move" || drag?.kind === "frame-resize" ? drag.moved : false;
+  let frameBarPos: { left: number; top: number; below: boolean } | null = null;
+  if (selectedFrames.length && !movingFrames && drag?.kind !== "frame-create") {
+    const vs = selectedFrames.map((f) => toView(f));
+    const left = Math.min(...vs.map((v) => v.left));
+    const right = Math.max(...vs.map((v) => v.left + v.width));
+    const top = Math.min(...vs.map((v) => v.top));
+    const bottom = Math.max(...vs.map((v) => v.top + v.height));
+    const below = top < 56;
+    frameBarPos = { left: Math.max(190, Math.min(cssW - 190, (left + right) / 2)), top: below ? bottom + 10 : top - 42, below };
+  }
   const createRect = drag?.kind === "create" && drag.moved ? toView(normRect(drag.start[0], drag.start[1], drag.cur[0], drag.cur[1])) : null;
+  const frameRect = drag?.kind === "frame-create" && drag.moved ? toView(normRect(drag.start[0], drag.start[1], drag.cur[0], drag.cur[1])) : null;
   const marqueeRect = drag?.kind === "marquee" ? toView(normRect(drag.start[0], drag.start[1], drag.cur[0], drag.cur[1])) : null;
   const excludedSet = new Set(excluded);
   const cursorClass =
-    tool === "hand" ? "cur-hand" : tool === "select" ? "cur-select" : hover ? "cur-token" : "cur-mask";
+    tool === "hand" ? "cur-hand" : tool === "select" ? "cur-select" : tool === "text" ? "cur-text" : hover ? "cur-token" : "cur-mask";
 
   return (
     <div className="page" style={{ width: cssW, height: cssH }}>
@@ -464,6 +658,7 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
         onPointerCancel={onPointerCancel}
         onPointerLeave={() => !dragRef.current && hover && setHover(null)}
         onContextMenu={onContextMenu}
+        onDoubleClick={onDoubleClick}
       >
         {panel === "search" &&
           hits.map((h) =>
@@ -480,6 +675,14 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
         {masks.map((m) => (
           <MaskBox key={m.id} mask={m} selected={selSet.has(m.id)} style={toView(m)} peek={peek} />
         ))}
+        {frames.map((f) => (
+          <FrameBox key={f.id} frame={f} selected={frameSet.has(f.id)} editing={editingId === f.id && !peek} peek={peek} style={toView(f)} rot={rot} zoom={zoom} />
+        ))}
+        {frameRect && (
+          <div className="rubber free" style={frameRect}>
+            <span className="rubber-tag">テキスト枠</span>
+          </div>
+        )}
         {createRect && (
           <div className={"rubber" + (preview[0]?.free ? " free" : "")} style={createRect}>
             <span className="rubber-tag">
@@ -504,6 +707,7 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
           tool === "mask" && hasText === false && <div className="page-badge">画像のみ・範囲指定で隠せます</div>
         )}
         {toolbarPos && <SelectionToolbar {...toolbarPos} />}
+        {frameBarPos && <FrameToolbar {...frameBarPos} />}
       </div>
     </div>
   );

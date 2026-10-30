@@ -6,7 +6,8 @@ import { presetRegex } from "../model/presets";
 import { buildIndex, searchIndex } from "../model/text";
 import type { Level, MaskStyle } from "../model/types";
 import { runExport } from "./exporter";
-import type { ExportMask, ExportOptions } from "./protocol";
+import type { FrameRenderer } from "./exporter";
+import type { ExportFrame, ExportMask, ExportOptions } from "./protocol";
 import { extractPageText } from "./textExtract";
 
 const SAMPLE = new Uint8Array(readFileSync(new URL("../../public/sample.pdf", import.meta.url)));
@@ -255,5 +256,114 @@ describe("書き出し（墨消し）", () => {
     expect(file.report.leakedChars).toBe(0);
     expect(file.report.passed).toBe(true);
     expect(textOf(file.bytes).join("").trim()).toBe("");
+  });
+
+  describe("テキスト枠", () => {
+    /** キャンバスのない環境用：枠の左半分を赤で不透明、右半分を透明にした画像を返す */
+    const calls: { w: number; h: number; scale: number }[] = [];
+    const halfRed: FrameRenderer = (f, scale) => {
+      calls.push({ w: f.w, h: f.h, scale });
+      const width = Math.ceil(f.w * scale);
+      const height = Math.ceil(f.h * scale);
+      const data = new Uint8ClampedArray(width * height * 4);
+      for (let y = 0; y < height; y++)
+        for (let x = 0; x < width; x++) {
+          const i = (y * width + x) * 4;
+          data[i] = 255;
+          data[i + 3] = x < width / 2 ? 255 : 0;
+        }
+      return { width, height, data };
+    };
+    const frame = (over: Partial<ExportFrame> = {}): ExportFrame => ({
+      id: "t1",
+      page: 0,
+      x: 100,
+      y: 300,
+      w: 200,
+      h: 60,
+      text: "テスト",
+      size: 14,
+      bold: false,
+      color: "#000000",
+      align: "left",
+      fill: null,
+      line: null,
+      ...over,
+    });
+    const pixel = (bytes: Uint8Array, pageNo: number, x: number, y: number) => {
+      const doc = new mupdf.PDFDocument(bytes);
+      const pix = doc.loadPage(pageNo).toPixmap(mupdf.Matrix.identity, mupdf.ColorSpace.DeviceRGB, false, true);
+      const px = pix.getPixels();
+      const i = (y - pix.getY()) * pix.getStride() + (x - pix.getX()) * 3;
+      const rgb = [px[i], px[i + 1], px[i + 2]];
+      doc.destroy();
+      return rgb;
+    };
+
+    it("枠の画像をページに重ねる。透明な所は下のページが見え、枠のないページは変わらない", async () => {
+      calls.length = 0;
+      const base = await runExport(
+        mupdf,
+        { docs: [{ docId: "a", name: "out.pdf", order: [0, 1], rot: {}, masks: [] }], options: baseOptions },
+        source,
+        () => {},
+      );
+      const result = await runExport(
+        mupdf,
+        { docs: [{ docId: "a", name: "out.pdf", order: [0, 1], rot: {}, masks: [], frames: [frame()] }], options: baseOptions },
+        source,
+        () => {},
+        halfRed,
+      );
+      const [file] = result.files;
+      expect(file.frames).toBe(1);
+      expect(calls).toEqual([{ w: 200, h: 60, scale: 4 }]);
+      // 左半分（不透明）は赤、右半分（透明）は元のページのまま（半透明の合成の丸めで1段階ずれることはある）
+      const near = (a: number[], b: number[]) => a.forEach((v, i) => expect(Math.abs(v - b[i])).toBeLessThanOrEqual(2));
+      expect(pixel(file.bytes, 0, 130, 330)).toEqual([255, 0, 0]);
+      near(pixel(file.bytes, 0, 270, 330), pixel(base.files[0].bytes, 0, 270, 330));
+      // 枠のないページは書き出し前と同じ
+      expect(pixel(file.bytes, 1, 130, 330)).toEqual(pixel(base.files[0].bytes, 1, 130, 330));
+      // 枠のところは「マスク以外が変わった」とは数えない
+      expect(file.report.passed).toBe(true);
+      expect(file.report.diffPages).toEqual([]);
+    });
+
+    it("見えるものがない枠（文字も塗りも枠線もない）は書き込まない。並べ替え・回転しても枠は同じ元のページに付く", async () => {
+      calls.length = 0;
+      const result = await runExport(
+        mupdf,
+        {
+          docs: [
+            {
+              docId: "a",
+              name: "out.pdf",
+              order: [1, 0],
+              rot: { 0: 90 },
+              masks: [],
+              frames: [frame({ id: "empty", text: "  ", x: 10, y: 10 }), frame({ id: "t2", page: 0 })],
+            },
+          ],
+          options: baseOptions,
+        },
+        source,
+        () => {},
+        halfRed,
+      );
+      expect(calls).toHaveLength(1);
+      const [file] = result.files;
+      expect(file.report.passed).toBe(true);
+      // 元の0ページ目は書き出し後の2ページ目（90度回転）。枠の画像はそこにだけある
+      const doc = new mupdf.PDFDocument(file.bytes);
+      const imageCount = (i: number) => {
+        let n = 0;
+        const xo = doc.loadPage(i).getObject().get("Resources").get("XObject");
+        if (xo.isDictionary()) xo.forEach(() => n++);
+        return n;
+      };
+      expect(imageCount(1)).toBeGreaterThan(0);
+      expect(imageCount(0)).toBe(0);
+      doc.destroy();
+    });
   });
 });

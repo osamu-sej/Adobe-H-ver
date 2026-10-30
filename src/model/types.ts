@@ -78,6 +78,25 @@ export interface Mask extends Rect {
   text?: string;
 }
 
+/** テキスト枠：ページの上に置く枠。中に文字を入れる（マスクとは別のもの）。座標は元ページ空間（pt） */
+export interface TextFrame extends Rect {
+  id: string;
+  docId: string;
+  /** 元PDFでのページ番号（0始まり） */
+  page: number;
+  text: string;
+  /** 文字の大きさ（pt） */
+  size: number;
+  bold: boolean;
+  /** 文字の色（#rrggbb） */
+  color: string;
+  align: "left" | "center" | "right";
+  /** 枠の中の塗り（#rrggbb）。null は塗りなし（下のページが見える） */
+  fill: string | null;
+  /** 枠線の色（#rrggbb）。null は枠線なし */
+  line: string | null;
+}
+
 export interface PageInfo {
   /** 元ページ空間の幅・高さ（pt） */
   w: number;
@@ -118,7 +137,7 @@ export interface DocLayout {
   rot: Record<number, Rot>;
 }
 
-export type Tool = "mask" | "select" | "hand";
+export type Tool = "mask" | "select" | "hand" | "text";
 
 /** 文字層：ページ内の文字の外接矩形（元ページ空間） */
 export interface PageText {

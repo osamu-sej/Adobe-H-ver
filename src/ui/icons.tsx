@@ -292,3 +292,28 @@ export const IconLayers = (p: P) => (
     <path d="M3 13l9 5 9-5" />
   </Svg>
 );
+
+export const IconTextBox = (p: P) => (
+  <Svg {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="1.5" strokeDasharray="3 2.5" />
+    <path d="M8 9V8h8v1M12 8v8M10 16h4" />
+  </Svg>
+);
+
+export const IconAlignLeft = (p: P) => (
+  <Svg {...p}>
+    <path d="M4 6h16M4 10h10M4 14h16M4 18h10" />
+  </Svg>
+);
+
+export const IconAlignCenter = (p: P) => (
+  <Svg {...p}>
+    <path d="M4 6h16M7 10h10M4 14h16M7 18h10" />
+  </Svg>
+);
+
+export const IconAlignRight = (p: P) => (
+  <Svg {...p}>
+    <path d="M4 6h16M10 10h10M4 14h16M10 18h10" />
+  </Svg>
+);

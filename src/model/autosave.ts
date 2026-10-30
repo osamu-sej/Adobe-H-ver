@@ -1,10 +1,10 @@
 import { commit, toast, useStore } from "./store";
 import { textUnder } from "./text";
 import { getText } from "./texts";
-import type { DocEntry, DocLayout, Level, Mask, MaskStyle } from "./types";
+import type { DocEntry, DocLayout, Level, Mask, MaskStyle, TextFrame } from "./types";
 
 /**
- * 作業の自動保存。保存するのはマスクの位置・ページ構成だけで、PDF本体や隠した文字は保存しない。
+ * 作業の自動保存。保存するのはマスクの位置・ページ構成・テキスト枠（入れた文字も）だけで、PDF本体や隠した文字は保存しない。
  * 同じファイル（SHA-256が一致）を開き直したときに復元できる。
  */
 
@@ -12,6 +12,7 @@ const PREFIX = "kakusu:v1:";
 const MAX_ENTRIES = 60;
 
 type SavedMask = Omit<Mask, "docId" | "text">;
+type SavedFrame = Omit<TextFrame, "docId">;
 
 interface Saved {
   /** 保存形式。2：塗りつぶしの色・透明度と、弱めた程度。なし：黒塗り・白塗りと、1段階ずつ強かった程度 */
@@ -21,6 +22,8 @@ interface Saved {
   order: number[];
   rot: DocLayout["rot"];
   masks: SavedMask[];
+  /** テキスト枠（古い保存データにはない） */
+  frames?: SavedFrame[];
 }
 
 const VERSION = 2;
@@ -48,9 +51,10 @@ function storage(): Storage | null {
   }
 }
 
-function isPristine(doc: DocEntry, layout: DocLayout, masks: Mask[]) {
+function isPristine(doc: DocEntry, layout: DocLayout, masks: Mask[], frames: TextFrame[]) {
   return (
     masks.length === 0 &&
+    frames.length === 0 &&
     layout.order.length === doc.pages.length &&
     layout.order.every((p, i) => p === i) &&
     Object.values(layout.rot).every((r) => !r)
@@ -66,9 +70,10 @@ function saveAll() {
     const layout = s.layouts[id];
     if (!doc || !layout) continue;
     const masks = s.masks.filter((m) => m.docId === id);
+    const frames = s.frames.filter((f) => f.docId === id);
     const key = PREFIX + doc.hash;
     try {
-      if (isPristine(doc, layout, masks)) {
+      if (isPristine(doc, layout, masks, frames)) {
         ls.removeItem(key);
         continue;
       }
@@ -79,6 +84,7 @@ function saveAll() {
         order: layout.order,
         rot: layout.rot,
         masks: masks.map(({ docId: _d, text: _t, ...rest }) => rest),
+        frames: frames.map(({ docId: _d, ...rest }) => rest),
       };
       ls.setItem(key, JSON.stringify(data));
     } catch {
@@ -110,7 +116,7 @@ function prune(ls: Storage) {
 let timer = 0;
 export function startAutosave() {
   useStore.subscribe((s, prev) => {
-    if (s.masks === prev.masks && s.layouts === prev.layouts) return;
+    if (s.masks === prev.masks && s.frames === prev.frames && s.layouts === prev.layouts) return;
     window.clearTimeout(timer);
     timer = window.setTimeout(saveAll, 600);
   });
@@ -136,7 +142,7 @@ export function checkRestore(doc: DocEntry) {
     minute: "2-digit",
   });
   toast({
-    message: `「${doc.name}」の前回の作業（マスク ${data.masks.length} 件・${when}）が残っています`,
+    message: `「${doc.name}」の前回の作業（マスク ${data.masks.length} 件${data.frames?.length ? `・テキスト枠 ${data.frames.length} 件` : ""}・${when}）が残っています`,
     duration: 15000,
     action: {
       label: "復元する",
@@ -148,9 +154,13 @@ export function checkRestore(doc: DocEntry) {
             const idx = getText(doc.id, m.page);
             return { ...migrate(m, data.v ?? 1), docId: doc.id, text: idx ? textUnder(idx, m) || undefined : undefined };
           });
+        const restoredFrames: TextFrame[] = (data.frames ?? [])
+          .filter((f) => f.page < doc.pages.length)
+          .map((f) => ({ ...f, docId: doc.id }));
         commit((s) => ({
           layouts: { ...s.layouts, [doc.id]: { order: valid.length ? valid : s.layouts[doc.id].order, rot: data.rot ?? {} } },
           masks: [...s.masks.filter((m) => m.docId !== doc.id), ...restored],
+          frames: [...s.frames.filter((f) => f.docId !== doc.id), ...restoredFrames],
         }));
         toast({ message: "前回の作業を復元しました", tone: "success" });
       },

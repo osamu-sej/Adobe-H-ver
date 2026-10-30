@@ -809,7 +809,7 @@ footer .build { font-size: 12px; font-variant-numeric: tabular-nums; }
             <li>まず触ってみたいときは <b>「サンプルで試す」</b>。架空の請求書で練習できます。</li>
           </ol>
           <div class="note"><span class="ni">🔑</span><span><b>パスワード付きPDF</b>も開けます。開くときにパスワードを聞かれます。</span></div>
-          <div class="note"><span class="ni">💾</span><span>作業は<b>自動で保存</b>されます。同じPDFを開き直すと「前回の作業が残っています → 復元する」が出ます（保存するのはマスクの位置だけ。PDF本体や隠した文字は保存しません）。</span></div>
+          <div class="note"><span class="ni">💾</span><span>作業は<b>自動で保存</b>されます。同じPDFを開き直すと「前回の作業が残っています → 復元する」が出ます（保存するのはマスクの位置・テキスト枠に入れた文字・ページの構成だけ。PDF本体や隠した文字は保存しません）。</span></div>
         </div>
       </div>
       <div class="note ok"><span class="ni">🛡️</span><span><b>PDFは端末の外に送信されません。</b>処理はすべてブラウザの中で行い、外部への通信はブラウザ側で禁止しています。ネットを切った状態でも使えます。</span></div>
@@ -1128,7 +1128,7 @@ footer .build { font-size: 12px; font-variant-numeric: tabular-nums; }
           <div class="krow" data-k="escape"><span>選択を外す</span><span class="kk"><kbd>Esc</kbd></span></div>
           <div class="krow" data-k="l"><span>マスク一覧</span><span class="kk"><kbd>L</kbd></span></div>
           <h4>表示・ページ</h4>
-          <div class="krow" data-k="m v h"><span>マスク ／ 選択 ／ 手のひら</span><span class="kk"><kbd>M</kbd><kbd>V</kbd><kbd>H</kbd></span></div>
+          <div class="krow" data-k="m v t h"><span>マスク ／ 選択 ／ テキスト枠 ／ 手のひら</span><span class="kk"><kbd>M</kbd><kbd>V</kbd><kbd>T</kbd><kbd>H</kbd></span></div>
           <div class="krow" data-k="space"><span>押しながらドラッグでスクロール</span><span class="kk"><kbd>Space</kbd></span></div>
           <div class="krow" data-k="ctrl+= ctrl+- ctrl+0"><span>拡大 ／ 縮小 ／ 幅に合わせる</span><span class="kk"><kbd>Ctrl</kbd><kbd>+</kbd><kbd>-</kbd><kbd>0</kbd></span></div>
           <div class="krow" data-k="ctrl+l ctrl+r ctrl+d"><span>表示中のページを回転 ／ 削除</span><span class="kk"><kbd>Ctrl</kbd><kbd>L</kbd><kbd>R</kbd><kbd>D</kbd></span></div>
@@ -1168,7 +1168,7 @@ footer .build { font-size: 12px; font-variant-numeric: tabular-nums; }
         </details>
         <details>
           <summary>途中でブラウザを閉じてしまったら？</summary>
-          <div>マスクの位置とページの構成は自動で保存されています。同じPDFを開き直すと「前回の作業が残っています」と出るので、「復元する」を押してください。PDF本体や隠した文字は保存しません。</div>
+          <div>マスクの位置・テキスト枠に入れた文字・ページの構成は自動で保存されています。同じPDFを開き直すと「前回の作業が残っています」と出るので、「復元する」を押してください。PDF本体や隠した文字は保存しません。</div>
         </details>
         <details>
           <summary>元のPDFファイルは書き換わりますか？</summary>
@@ -1261,7 +1261,7 @@ footer .build { font-size: 12px; font-variant-numeric: tabular-nums; }
   // ---------- 画面の見かた ----------
   const SPOTS = [
     { k: "open", t: "開く", d: "PDFを追加で開きます。画面へのドロップでもOK。", r: { l: 9.44, t: 1.08, w: 4.75, h: 3.64 } },
-    { k: "tools", t: "ツール", d: "マスク（M）・選択（V）・手のひら（H）。ふだんは「マスク」のままで大丈夫です。", r: { l: 19.11, t: 0.74, w: 7.47, h: 4.32 } },
+    { k: "tools", t: "ツール", d: "マスク（M）・選択（V）・テキスト枠（T）・手のひら（H）。ふだんは「マスク」のままで大丈夫です。テキスト枠は、ページに枠を作って文字を入れたいときだけ使います（マスクとは別の機能です）。", r: { l: 19.11, t: 0.74, w: 7.47, h: 4.32 } },
     { k: "styles", t: "隠し方", d: "モザイク・ぼかし・塗りつぶし。キー 1・2・3 でも切り替えられます。", r: { l: 27.24, t: 0.74, w: 8.07, h: 4.32 } },
     { k: "levels", t: "程度（塗りつぶしのときは色）", d: "弱・中・強。[ ] キーでも切替。塗りつぶしを選ぶと、ここが色と透明度のボタンになります。", r: { l: 35.98, t: 0.74, w: 9.07, h: 4.32 } },
     { k: "snap", t: "吸着", d: "数字・文字・自由。ドラッグしたときに何に合わせて隠すかを選びます（S キー）。", r: { l: 45.71, t: 0.74, w: 14.27, h: 4.32 } },

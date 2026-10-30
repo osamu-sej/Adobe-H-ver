@@ -64,6 +64,7 @@ function ExportDialogInner() {
   const docs = useStore((s) => s.docs);
   const layouts = useStore((s) => s.layouts);
   const masks = useStore((s) => s.masks);
+  const frames = useStore((s) => s.frames);
 
   const [names, setNames] = useState<Record<string, string>>(() =>
     Object.fromEntries(docOrder.map((id) => [id, outName(docs[id].name)])),
@@ -102,6 +103,7 @@ function ExportDialogInner() {
   const selectedDocs = docOrder.filter((id) => included[id]);
   const maskCount = (id: string) => masks.filter((m) => m.docId === id && layouts[id]?.order.includes(m.page)).length;
   const totalMasks = selectedDocs.reduce((n, id) => n + maskCount(id), 0);
+  const totalFrames = frames.filter((f) => selectedDocs.includes(f.docId) && layouts[f.docId]?.order.includes(f.page)).length;
   const rotatedMasks = masks.some((m) => !!m.angle && selectedDocs.includes(m.docId) && layouts[m.docId]?.order.includes(m.page));
   const single = selectedDocs.length === 1 || mode === "merge";
   const shared = encrypt && (!enc.ownerPassword || enc.ownerPassword === enc.userPassword);
@@ -146,6 +148,9 @@ function ExportDialogInner() {
               label: m.label,
               text: m.text,
             })),
+          frames: frames
+            .filter((f) => f.docId === id && l.order.includes(f.page))
+            .map(({ docId: _d, ...rest }) => rest),
         };
       }),
       options: {
@@ -398,7 +403,7 @@ function ExportDialogInner() {
               </button>
               <button className="btn primary" disabled={errors.length > 0} onClick={start}>
                 <IconDownload size={16} />
-                {totalMasks > 0 ? `${totalMasks}件の加工を反映して書き出す` : "書き出す"}
+                {totalMasks + totalFrames > 0 ? `${totalMasks + totalFrames}件の加工を反映して書き出す` : "書き出す"}
               </button>
             </div>
           </>
@@ -492,7 +497,7 @@ function Report({ files, ocrPages }: { files: ExportFile[]; ocrPages: number }) 
             <div className="report-file-head">
               <b>{f.name}</b>
               <span className="muted small">
-                {f.pages}ページ · マスク {f.masks} 件 · {(f.bytes.length / 1024).toFixed(0)}KB
+                {f.pages}ページ · マスク {f.masks} 件{f.frames ? ` · テキスト枠 ${f.frames} 件` : ""} · {(f.bytes.length / 1024).toFixed(0)}KB
               </span>
               <button className="btn sm" onClick={() => download(f.name, f.bytes)}>
                 <IconDownload size={14} /> 保存

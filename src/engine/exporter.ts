@@ -1,11 +1,13 @@
 import type * as M from "mupdf";
 import { drawLabel, hexToRgb, isOpaqueFill, renderPatch, type FillSpec, type Patch, type PixelSource } from "../fx/effects";
+import { renderFrame } from "../fx/frames";
 import { inflate, maskBounds, maskCorners, maskOverlapArea, toViewRect, type OrientedRect, type Point } from "../model/geometry";
 import { countStandalone, isMeaningfulValue, normalize } from "../model/normalize";
 import type { Rect, Rot } from "../model/types";
 import type {
   ExportDoc,
   ExportFile,
+  ExportFrame,
   ExportJob,
   ExportMask,
   ExportOptions,
@@ -27,22 +29,33 @@ interface PageMap {
   /** 書き出し後のページ空間でのマスク位置 */
   masks: OrientedRect[];
   texts: string[];
+  /** 書き込んだテキスト枠の、書き出し後のページ空間での位置（見た目が変わって当然なので、変化の検証から除く） */
+  frames: Rect[];
 }
 
 /** モザイク・ぼかしの元にするページ画像の解像度（px/pt）。216dpi相当 */
 const SAMPLE_SCALE = 3;
 /** 重ねる画像の最大画素数 */
 const PATCH_MAX_PIXELS = 2_500_000;
+/** テキスト枠の画像の解像度（px/pt）。288dpi 相当 */
+const FRAME_SCALE = 4;
+
+/** 枠1つ分を画素にする関数（キャンバスが使えない環境のテストでは差し替える） */
+export type FrameRenderer = typeof renderFrame;
 
 export async function runExport(
   mupdf: Mupdf,
   job: ExportJob,
   getSource: (docId: string) => Source,
   progress: Progress,
+  drawFrames: FrameRenderer = renderFrame,
 ): Promise<ExportResult> {
   const opts = job.options;
   const total =
-    job.docs.reduce((n, d) => n + new Set(d.masks.map((m) => m.page)).size + d.order.length * (opts.rasterize ? 2 : 1), 0) +
+    job.docs.reduce(
+      (n, d) => n + new Set([...d.masks.map((m) => m.page), ...(d.frames ?? []).map((f) => f.page)]).size + d.order.length * (opts.rasterize ? 2 : 1),
+      0,
+    ) +
     1;
   let done = 0;
   const step = (label: string) => progress(++done, total, label);
@@ -59,7 +72,7 @@ export async function runExport(
 
   for (const ed of job.docs) {
     const doc = open(ed.docId);
-    const maps = await processDoc(mupdf, doc, ed, opts, step);
+    const maps = await processDoc(mupdf, doc, ed, opts, step, drawFrames);
     processed.push({ ed, doc, maps });
   }
 
@@ -90,6 +103,7 @@ export async function runExport(
       bytes,
       pages: out.maps.length,
       masks: out.maps.reduce((n, m) => n + m.masks.length, 0),
+      frames: out.maps.reduce((n, m) => n + m.frames.length, 0),
       report,
     });
   }
@@ -105,6 +119,7 @@ async function processDoc(
   ed: ExportDoc,
   opts: ExportOptions,
   step: (label: string) => void,
+  drawFrames: FrameRenderer,
 ): Promise<PageMap[]> {
   if (opts.flatten) {
     doc.bake(true, true);
@@ -118,6 +133,9 @@ async function processDoc(
     byPage.set(m.page, list);
   }
 
+  const framesByPage = new Map<number, ExportFrame[]>();
+  for (const f of ed.frames ?? []) framesByPage.set(f.page, [...(framesByPage.get(f.page) ?? []), f]);
+
   const sizes: { w: number; h: number }[] = [];
   for (let i = 0; i < doc.countPages(); i++) {
     const p = doc.loadPage(i);
@@ -126,9 +144,13 @@ async function processDoc(
     p.destroy();
   }
 
-  for (const [pageIndex, masks] of [...byPage.entries()].sort((a, b) => a[0] - b[0])) {
+  for (const pageIndex of [...new Set([...byPage.keys(), ...framesByPage.keys()])].sort((a, b) => a - b)) {
     if (pageIndex >= sizes.length) continue;
-    await redactPage(mupdf, doc, pageIndex, masks, opts.keepText && !opts.rasterize);
+    const masks = byPage.get(pageIndex);
+    if (masks) await redactPage(mupdf, doc, pageIndex, masks, opts.keepText && !opts.rasterize);
+    // テキスト枠は、マスクの効果の上に重ねる
+    const frames = framesByPage.get(pageIndex);
+    if (frames) addFrames(mupdf, doc, pageIndex, frames, drawFrames);
     step(`${ed.name}：${pageIndex + 1}ページを加工中`);
   }
 
@@ -159,6 +181,7 @@ async function processDoc(
       rot,
       masks: ms.map((m) => ({ ...toViewRect(m, rot, size.w, size.h), angle: m.angle })),
       texts: ms.map((m) => m.text ?? "").filter(Boolean),
+      frames: (framesByPage.get(src) ?? []).map((f) => toViewRect(f, rot, size.w, size.h)),
     };
   });
 }
@@ -295,6 +318,75 @@ async function redactPage(mupdf: Mupdf, doc: M.PDFDocument, pageIndex: number, m
       const m = mupdf.Matrix.concat([o.rect.w, 0, 0, -o.rect.h, fx, fy + o.rect.h], toUser);
       ops += `q ${clip}${m.map(num).join(" ")} cm /${name} Do Q\n`;
     }
+  });
+  const contents = pageObj.get("Contents");
+  const arr = doc.newArray();
+  arr.push(doc.addStream("q\n", {}));
+  if (contents.isArray()) contents.forEach((v) => arr.push(v));
+  else if (!contents.isNull()) arr.push(contents);
+  arr.push(doc.addStream(ops, {}));
+  pageObj.put("Contents", arr);
+  page.destroy();
+}
+
+/**
+ * テキスト枠を、ページの上に画像として重ねる（画面と同じ描画なので見た目が同じになる。透ける所は透明のまま）。
+ * 文字は画像になるので、PDFの文字としては検索・選択できない
+ */
+function addFrames(mupdf: Mupdf, doc: M.PDFDocument, pageIndex: number, frames: ExportFrame[], draw: FrameRenderer) {
+  const page = doc.loadPage(pageIndex);
+  const [x0, y0, x1, y1] = page.getBounds();
+  const pageObj = page.getObject();
+  let res = pageObj.get("Resources");
+  if (!res.isDictionary()) {
+    const inherited = pageObj.getInheritable("Resources");
+    const copy = doc.newDictionary();
+    if (inherited.isDictionary()) inherited.forEach((v, key) => copy.put(key, v));
+    pageObj.put("Resources", copy);
+    res = pageObj.get("Resources");
+  }
+  let xobjects = res.get("XObject");
+  if (!xobjects.isDictionary()) {
+    res.put("XObject", doc.newDictionary());
+    xobjects = res.get("XObject");
+  }
+  const toUser = mupdf.Matrix.invert(page.getTransform());
+  let ops = "Q\n";
+  frames.forEach((f, i) => {
+    const rect = clipRect(f, x1 - x0, y1 - y0);
+    // 見えるものがない枠（文字も塗りも枠線もない）や、ページの外の枠は書き込まない
+    if ((!f.text.trim() && !f.fill && !f.line) || rect.w <= 0 || rect.h <= 0 || f.w <= 0 || f.h <= 0) return;
+    const scale = Math.min(FRAME_SCALE, Math.sqrt(PATCH_MAX_PIXELS / (f.w * f.h)));
+    const img = draw({ ...f, docId: "" }, scale);
+    if (!img) return;
+    const rgb = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, [0, 0, img.width, img.height], false);
+    const alpha = new mupdf.Pixmap(mupdf.ColorSpace.DeviceGray, [0, 0, img.width, img.height], false);
+    const rp = rgb.getPixels();
+    const ap = alpha.getPixels();
+    const rs = rgb.getStride();
+    const as = alpha.getStride();
+    for (let y = 0; y < img.height; y++) {
+      for (let x = 0; x < img.width; x++) {
+        const q = (y * img.width + x) * 4;
+        const p = y * rs + x * 3;
+        rp[p] = img.data[q];
+        rp[p + 1] = img.data[q + 1];
+        rp[p + 2] = img.data[q + 2];
+        ap[y * as + x] = img.data[q + 3];
+      }
+    }
+    const mask = new mupdf.Image(alpha);
+    const image = new mupdf.Image(rgb, mask);
+    const ref = doc.addImage(image);
+    ref.put("Interpolate", true);
+    image.destroy();
+    mask.destroy();
+    rgb.destroy();
+    alpha.destroy();
+    const name = `KakusuF${pageIndex}T${i}`;
+    xobjects.put(name, ref);
+    const m = mupdf.Matrix.concat([f.w, 0, 0, -f.h, x0 + f.x, y0 + f.y + f.h], toUser);
+    ops += `q ${m.map(num).join(" ")} cm /${name} Do Q\n`;
   });
   const contents = pageObj.get("Contents");
   const arr = doc.newArray();
@@ -598,7 +690,7 @@ function verify(
     const a = page.toPixmap(mupdf.Matrix.scale(k, k), mupdf.ColorSpace.DeviceRGB, false, true);
     const c = refPage.toPixmap(mupdf.Matrix.scale(k, k), mupdf.ColorSpace.DeviceRGB, false, true);
     if (map.rot) refObj.put("Rotate", baseRot);
-    const r = comparePixmaps(a, c, map.masks.map((m) => inflate(maskBounds(m), 2.5)), k, opts.rasterize ? 72 : 40);
+    const r = comparePixmaps(a, c, [...map.masks.map((m) => inflate(maskBounds(m), 2.5)), ...map.frames.map((f) => inflate(f, 2.5))], k, opts.rasterize ? 72 : 40);
     a.destroy();
     c.destroy();
     refPage.destroy();
