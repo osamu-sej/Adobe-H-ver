@@ -102,6 +102,7 @@ function ExportDialogInner() {
   const selectedDocs = docOrder.filter((id) => included[id]);
   const maskCount = (id: string) => masks.filter((m) => m.docId === id && layouts[id]?.order.includes(m.page)).length;
   const totalMasks = selectedDocs.reduce((n, id) => n + maskCount(id), 0);
+  const rotatedMasks = masks.some((m) => !!m.angle && selectedDocs.includes(m.docId) && layouts[m.docId]?.order.includes(m.page));
   const single = selectedDocs.length === 1 || mode === "merge";
   const shared = encrypt && (!enc.ownerPassword || enc.ownerPassword === enc.userPassword);
   const restricted = Object.values(enc.permissions).some((v) => !v);
@@ -137,6 +138,7 @@ function ExportDialogInner() {
               y: m.y,
               w: m.w,
               h: m.h,
+              angle: m.angle,
               style: m.style,
               strength: resolveStrength(m),
               color: m.color,
@@ -259,6 +261,11 @@ function ExportDialogInner() {
                     <span>
                       隠した数字は見た目では読みにくくなりますが、PDFの中には残ります。社外に渡す資料では「加工したとおり」を選んでください。
                     </span>
+                  </div>
+                )}
+                {rotatedMasks && method !== "overlay" && (
+                  <div className="note">
+                    回転したマスクのあるページは、周囲の見た目を保つため画像が追加されます。ファイル容量が増え、マスクに接する文字や図形は枠の外側まで削除される場合があります。
                   </div>
                 )}
                 <div className="checks">

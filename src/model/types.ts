@@ -61,6 +61,8 @@ export interface Mask extends Rect {
   docId: string;
   /** 元PDFでのページ番号（0始まり）。並べ替え・削除しても変わらない */
   page: number;
+  /** 時計回りの角度（度）。省略時は0 */
+  angle?: number;
   style: MaskStyle;
   /** モザイク・ぼかしの程度（strength が null のときに使う） */
   level: Level;

@@ -80,6 +80,63 @@ export function overlapArea(a: Rect, b: Rect): number {
   return w > 0 && h > 0 ? w * h : 0;
 }
 
+export type OrientedRect = Rect & { angle?: number };
+export type Point = [number, number];
+
+export function normalizeAngle(angle: number): number {
+  const normalized = ((angle + 180) % 360 + 360) % 360 - 180;
+  return Math.round(normalized * 10) / 10 || 0;
+}
+
+/** ページの左上原点で、中心を軸に時計回りに回転した点 */
+export function rotatePoint(x: number, y: number, cx: number, cy: number, angle: number): Point {
+  const a = (angle * Math.PI) / 180;
+  const cos = Math.cos(a), sin = Math.sin(a), dx = x - cx, dy = y - cy;
+  return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
+}
+
+export function maskCorners(r: OrientedRect): Point[] {
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+  return [[r.x, r.y], [r.x + r.w, r.y], [r.x + r.w, r.y + r.h], [r.x, r.y + r.h]]
+    .map(([x, y]) => rotatePoint(x, y, cx, cy, r.angle ?? 0));
+}
+
+export function maskBounds(r: OrientedRect): Rect {
+  if (!r.angle) return { x: r.x, y: r.y, w: r.w, h: r.h };
+  const p = maskCorners(r), xs = p.map((v) => v[0]), ys = p.map((v) => v[1]);
+  return normRect(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys));
+}
+
+export function maskContains(r: OrientedRect, x: number, y: number): boolean {
+  if (!r.angle) return containsPoint(r, x, y);
+  const [px, py] = rotatePoint(x, y, r.x + r.w / 2, r.y + r.h / 2, -(r.angle ?? 0));
+  return containsPoint(r, px, py);
+}
+
+/** 回転した四角と、軸に沿う四角の交差部分 */
+export function maskOverlapArea(mask: OrientedRect, rect: Rect): number {
+  if (!mask.angle) return overlapArea(mask, rect);
+  let points = maskCorners(mask);
+  const clip = (axis: 0 | 1, value: number, greater: boolean) => {
+    const input = points;
+    points = [];
+    if (!input.length) return;
+    for (let i = 0; i < input.length; i++) {
+      const a = input[i], b = input[(i + 1) % input.length];
+      const inA = greater ? a[axis] >= value : a[axis] <= value;
+      const inB = greater ? b[axis] >= value : b[axis] <= value;
+      if (inA) points.push(a);
+      if (inA !== inB) {
+        const t = (value - a[axis]) / (b[axis] - a[axis]);
+        points.push([a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])]);
+      }
+    }
+  };
+  clip(0, rect.x, true); clip(0, rect.x + rect.w, false);
+  clip(1, rect.y, true); clip(1, rect.y + rect.h, false);
+  return Math.abs(points.reduce((s, p, i) => s + p[0] * points[(i + 1) % points.length][1] - p[1] * points[(i + 1) % points.length][0], 0)) / 2;
+}
+
 export function addRot(a: Rot, delta: number): Rot {
   return ((((a + delta) % 360) + 360) % 360) as Rot;
 }

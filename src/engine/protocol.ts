@@ -58,6 +58,7 @@ export interface OcrImageResult {
 export interface ExportMask extends Rect {
   id: string;
   page: number;
+  angle?: number;
   style: MaskStyle;
   strength: number;
   /** 塗りつぶしの色（#rrggbb）と不透明度 */
