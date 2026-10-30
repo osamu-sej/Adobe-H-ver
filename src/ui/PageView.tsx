@@ -237,8 +237,7 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
           if (!o) return m;
           const x = Math.max(-o.w / 2, Math.min(info.w - o.w / 2, o.x + dx));
           const y = Math.max(-o.h / 2, Math.min(info.h - o.h / 2, o.y + dy));
-          const next = { ...m, x, y };
-          return m.angle ? { ...next, text: idx ? textUnder(idx, next) || undefined : undefined } : next;
+          return { ...m, x, y };
         }),
       }));
       return;
@@ -253,11 +252,7 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
         beginGesture();
         dragRef.current = { ...d, moved: true };
       }
-      updateGesture((s) => ({ masks: s.masks.map((m) => {
-        if (m.id !== d.id) return m;
-        const next = { ...m, angle };
-        return { ...next, text: idx ? textUnder(idx, next) || undefined : undefined };
-      }) }));
+      updateGesture((s) => ({ masks: s.masks.map((m) => m.id === d.id ? { ...m, angle } : m) }));
       return;
     }
     if (d.kind === "resize") {
@@ -284,11 +279,7 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
       nv.x = ncx - nv.w / 2; nv.y = ncy - nv.h / 2;
       const base = toBaseRect(nv, rot, info.w, info.h);
       const nb = d.angle ? base : clampRect(base, info.w, info.h);
-      updateGesture((s) => ({ masks: s.masks.map((m) => {
-        if (m.id !== d.id) return m;
-        const next = { ...m, ...nb };
-        return m.angle ? { ...next, text: idx ? textUnder(idx, next) || undefined : undefined } : next;
-      }) }));
+      updateGesture((s) => ({ masks: s.masks.map((m) => m.id === d.id ? { ...m, ...nb } : m) }));
       return;
     }
     if (d.kind === "marquee") {
@@ -316,7 +307,15 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
     setDragBoth(null);
     if (!d) return;
     if (d.kind === "move" || d.kind === "resize" || d.kind === "rotate") {
-      if (d.moved) endGesture();
+      if (d.moved) {
+        const ids = d.kind === "move" ? d.ids : [d.id];
+        updateGesture((s) => ({ masks: s.masks.map((m) =>
+          ids.includes(m.id) && (m.angle || d.kind === "rotate")
+            ? { ...m, text: idx ? textUnder(idx, m) || undefined : undefined }
+            : m,
+        ) }));
+        endGesture();
+      }
       return;
     }
     if (d.kind === "marquee") return;
