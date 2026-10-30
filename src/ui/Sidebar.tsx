@@ -84,9 +84,15 @@ function openPageMenu(e: React.MouseEvent, docId: string, page: number) {
   ]);
 }
 
+/** ダイアログを開いている間は、ページの操作をしない（App.tsx のキー操作と同じ条件） */
+function modalOpen(s: ReturnType<typeof useStore.getState>) {
+  return s.exportOpen || s.helpOpen || !!s.passwordRequest || s.safetyOpen || s.settingsOpen || !!s.cloudOcrFor;
+}
+
 /** ページ一覧にフォーカスがあるときのキー操作（PowerPoint のスライド一覧と同じ）。ページを選んでいなければ従来の操作に任せる */
 function onPaneKeyDown(e: React.KeyboardEvent) {
   const s = useStore.getState();
+  if (modalOpen(s)) return;
   const mod = e.ctrlKey || e.metaKey;
   const key = e.key.toLowerCase();
   const sel = s.pageSel;
@@ -137,13 +143,14 @@ export function Sidebar({ onAddFiles }: { onAddFiles: () => void }) {
   const sel = useStore((s) => s.pageSel);
   const asideRef = useRef<HTMLElement>(null);
 
-  // ひとつだけ選んでいる間は、本文で表示しているページに選択が付いていく（複数選択は動かさない）
+  // 自分で選んでいない間は、本文で表示しているページに選択が付いていく。
+  // 自分で選んだページは動かさない（縮小表示だと、クリックしたページと本文の「現在のページ」が違うことがあり、Delete で別のページを消さないため）
   useEffect(() => {
     if (!current) return;
     const cur = useStore.getState().pageSel;
-    if (cur && cur.pages.length > 1) return;
-    if (cur?.docId === current.docId && cur.pages.length === 1 && cur.pages[0] === current.page) return;
-    setPageSel(singlePage(current.docId, current.page));
+    if (cur && !cur.follow) return;
+    if (cur?.docId === current.docId && cur.pages[0] === current.page) return;
+    setPageSel({ ...singlePage(current.docId, current.page), follow: true });
   }, [current]);
 
   // 本文などをクリックしたら、ページ一覧のキー操作（Delete など）は終える。マスクの Delete と取り違えないため
@@ -151,7 +158,12 @@ export function Sidebar({ onAddFiles }: { onAddFiles: () => void }) {
     const away = (e: PointerEvent) => {
       const aside = asideRef.current;
       const el = document.activeElement;
-      if (aside && el instanceof HTMLElement && aside.contains(el) && !aside.contains(e.target as Node)) el.blur();
+      if (aside && el instanceof HTMLElement && aside.contains(el) && !aside.contains(e.target as Node)) {
+        el.blur();
+        // 本文へ戻ったら、ひとつだけ選んでいた選択は、また本文に付いていく
+        const sel = useStore.getState().pageSel;
+        if (sel && sel.pages.length === 1 && !sel.follow) setPageSel({ ...sel, follow: true });
+      }
     };
     window.addEventListener("pointerdown", away, true);
     return () => window.removeEventListener("pointerdown", away, true);
@@ -192,6 +204,7 @@ function DocThumbs({ docId, multi }: { docId: string; multi: boolean }) {
   const selected = useStore(
     useShallow((s) => (s.pageSel?.docId === docId ? s.pageSel.pages : (NONE as number[]))),
   );
+  const focusPage = useStore((s) => (s.pageSel?.docId === docId ? s.pageSel.focus : -1));
   const counts = useStore(
     useShallow((s) => {
       const c: Record<number, number> = {};
@@ -256,6 +269,7 @@ function DocThumbs({ docId, multi }: { docId: string; multi: boolean }) {
                 count={counts[p] ?? 0}
                 active={current?.docId === docId && current.page === p}
                 selected={selected.includes(p)}
+                focused={focusPage === p}
                 onPick={(e) => {
                   const mode = { toggle: e.ctrlKey || e.metaKey, range: e.shiftKey };
                   setPageSel(clickPage(useStore.getState().pageSel, docId, layout.order, p, mode));
@@ -291,6 +305,7 @@ const Thumb = memo(function Thumb({
   count,
   active,
   selected,
+  focused,
   onPick,
   onDragStart,
   onDragEnd,
@@ -303,6 +318,8 @@ const Thumb = memo(function Thumb({
   count: number;
   active: boolean;
   selected: boolean;
+  /** 矢印キーなどで動かしている側（選択の端）。画面の外にならないように一覧をスクロールする */
+  focused: boolean;
   onPick: (e: React.MouseEvent<HTMLDivElement>) => void;
   onDragStart: () => void;
   onDragEnd: () => void;
@@ -329,6 +346,10 @@ const Thumb = memo(function Thumb({
   useEffect(() => {
     if (active) ref.current?.scrollIntoView({ block: "nearest" });
   }, [active]);
+
+  useEffect(() => {
+    if (focused) ref.current?.scrollIntoView({ block: "nearest" });
+  }, [focused]);
 
   useLayoutEffect(() => {
     if (!bmp) return;

@@ -66,6 +66,18 @@ describe("ページ一覧の選択（PowerPoint のスライド一覧と同じ�
     expect(stepPage(sel, [], 1, false)).toBeNull();
   });
 
+  it("自分でクリックや矢印で選んだ選択は、本文に付いていくだけの選択（follow）ではなくなる", () => {
+    const passive: PageSel = { ...singlePage("a", 2), follow: true };
+    expect(clickPage(passive, "a", order, 3).follow).toBeUndefined();
+    expect(clickPage(passive, "a", order, 3, { toggle: true }).follow).toBeUndefined();
+    expect(clickPage(passive, "a", order, 3, { range: true }).follow).toBeUndefined();
+    expect(stepPage(passive, order, 1, false)!.follow).toBeUndefined();
+    expect(stepPage(passive, order, 1, true)!.follow).toBeUndefined();
+    expect(allPages("a", order)!.follow).toBeUndefined();
+    // 一部が消えても、付いていくだけの選択のままにする
+    expect(trimSelection({ ...passive, pages: [2, 3] }, [2, 0, 1])).toEqual({ ...passive, pages: [2], anchor: 2, focus: 2 });
+  });
+
   it("すべて選択", () => {
     expect(allPages("a", order)).toEqual({ docId: "a", pages: order, anchor: 4, focus: 1 });
     expect(allPages("a", [])).toBeNull();

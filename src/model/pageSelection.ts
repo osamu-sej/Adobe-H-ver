@@ -12,6 +12,8 @@ export interface PageSel {
   anchor: number;
   /** 最後に操作したページ（矢印キーで動く側） */
   focus: number;
+  /** 本文で表示しているページに付いていくだけの選択（自分で選んだものではない）。自分で選んだ選択は、本文のスクロールで動かさない */
+  follow?: boolean;
 }
 
 /** 表示順 order のうち、a から b まで（どちらが先でもよい）のページ */
@@ -71,7 +73,7 @@ export function trimSelection(sel: PageSel | null, order: number[] | null | unde
   if (pages.length === sel.pages.length) return sel;
   if (!pages.length) return null;
   return {
-    docId: sel.docId,
+    ...sel,
     pages,
     anchor: pages.includes(sel.anchor) ? sel.anchor : pages[0],
     focus: pages.includes(sel.focus) ? sel.focus : pages[pages.length - 1],
