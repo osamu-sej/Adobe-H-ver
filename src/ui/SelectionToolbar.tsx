@@ -10,6 +10,7 @@ import { LEVEL_HINT, LEVEL_LABEL, LEVEL_ORDER, STYLE_LABEL, STYLE_ORDER, type Ma
 import { FillPopover, FillSwatch } from "./FillPicker";
 import { IconBlur, IconFill, IconMosaic, IconSlider, IconTag, IconTrash, IconWand } from "./icons";
 import { setLevel } from "./TopBar";
+import { useKeepInView } from "./useKeepInView";
 
 export const STYLE_ICON: Record<MaskStyle, (p: { size?: number }) => React.ReactElement> = {
   mosaic: IconMosaic,
@@ -53,6 +54,8 @@ export function SelectionToolbar({ left, top, below }: { left: number; top: numb
   const selected = useStore(useShallow((s) => s.masks.filter((m) => s.selection.includes(m.id))));
   const [open, setOpen] = useState<"strength" | "label" | "fill" | null>(null);
   const closeFill = useCallback(() => setOpen((o) => (o === "fill" ? null : o)), []);
+  const bar = useRef<HTMLDivElement>(null);
+  useKeepInView(bar, `${left}|${top}|${below}|${selected.length}`);
   if (!selected.length) return null;
   const ids = selected.map((m) => m.id);
   const styles = new Set(selected.map((m) => m.style));
@@ -73,6 +76,7 @@ export function SelectionToolbar({ left, top, below }: { left: number; top: numb
 
   return (
     <div
+      ref={bar}
       className={"sel-toolbar" + (below ? " below" : "")}
       style={{ left, top }}
       onPointerDown={(e) => e.stopPropagation()}

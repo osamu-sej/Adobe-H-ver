@@ -15,7 +15,15 @@ export const FRAME_MIN_SIZE = 4;
 export const FRAME_MAX_SIZE = 400;
 /** 文字の大きさの候補（PowerPoint の文字サイズ欄にそろえた段階） */
 export const FRAME_SIZES = [8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 44, 48, 54, 60, 66, 72, 80, 88, 96];
-export const FRAME_DEFAULT_SIZE = 14;
+/** 新しい枠の初期値：白い塗り・オレンジ（色見本の「朱」。アプリの強調色と同じ）の枠線・黒い12ptの文字 */
+export const FRAME_DEFAULTS = {
+  size: 12,
+  bold: false,
+  color: "#000000",
+  align: "left" as const,
+  fill: "#ffffff" as string | null,
+  line: "#e8492a" as string | null,
+};
 /** 文字色の候補 */
 export const FRAME_TEXT_COLORS: { name: string; value: string }[] = [
   { name: "黒", value: "#000000" },

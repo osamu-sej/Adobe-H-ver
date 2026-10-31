@@ -29,7 +29,7 @@ import { ensureText, getText, isOcrPage } from "../model/texts";
 import { STYLE_LABEL, STYLE_ORDER, type Mask, type PageInfo, type Rect, type Rot, type TextFrame } from "../model/types";
 import { pageCache, usePageBitmap } from "../render/bitmaps";
 import { paintMasks, paintPage, type PaintMask } from "../render/paint";
-import { FRAME_DEFAULT_SIZE, neededHeight } from "../fx/frames";
+import { FRAME_DEFAULTS, neededHeight } from "../fx/frames";
 import { openContextMenu, type MenuItem } from "./ContextMenu";
 import { FrameBox } from "./FrameBox";
 import { changeFrameSize, FrameToolbar } from "./FrameToolbar";
@@ -483,12 +483,7 @@ function PageViewImpl({ docId, page, info, rot, zoom, priority }: Props) {
       docId,
       page,
       text: "",
-      size: FRAME_DEFAULT_SIZE,
-      bold: false,
-      color: "#000000",
-      align: "left" as const,
-      fill: null,
-      line: "#374151",
+      ...FRAME_DEFAULTS,
     };
     const w = big ? dragged.w : Math.min(160, info.w);
     const x = big ? dragged.x : Math.max(0, Math.min(info.w - w, d.start[0]));
