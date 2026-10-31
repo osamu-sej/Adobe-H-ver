@@ -4,6 +4,7 @@ import { clampSize, FRAME_SIZES, FRAME_TEXT_COLORS, neededHeight, stepSize } fro
 import { deleteFrames, patchFrames, toast, undo, useStore } from "../model/store";
 import { FILL_COLORS, type TextFrame } from "../model/types";
 import { IconAlignCenter, IconAlignLeft, IconAlignRight, IconTrash } from "./icons";
+import { useKeepInView } from "./useKeepInView";
 
 /** 選んでいる枠の文字の大きさを、段階（8, 9, 10, … 96）で1つ大きく・小さくする */
 export function changeFrameSize(dir: 1 | -1) {
@@ -161,6 +162,8 @@ const ALIGNS = [
 export function FrameToolbar({ left, top, below }: { left: number; top: number; below: boolean }) {
   const frames = useStore(useShallow((s) => s.frames.filter((f) => s.frameSel.includes(f.id))));
   const [open, setOpen] = useState<"color" | "fill" | "line" | null>(null);
+  const bar = useRef<HTMLDivElement>(null);
+  useKeepInView(bar, `${left}|${top}|${below}|${frames.length}`);
   if (!frames.length) return null;
   const ids = frames.map((f) => f.id);
   const one = <T,>(vals: T[]): T | undefined => (vals.every((v) => v === vals[0]) ? vals[0] : undefined);
@@ -174,6 +177,7 @@ export function FrameToolbar({ left, top, below }: { left: number; top: number; 
 
   return (
     <div
+      ref={bar}
       className={"sel-toolbar frame-toolbar" + (below ? " below" : "")}
       style={{ left, top }}
       onPointerDown={(e) => e.stopPropagation()}

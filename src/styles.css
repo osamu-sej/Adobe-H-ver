@@ -863,7 +863,8 @@ kbd {
 .sel-toolbar {
   position: absolute;
   z-index: 10;
-  transform: translate(-50%, -100%);
+  /* --dx：画面の端で切れないように横にずらす量（useKeepInView が決める） */
+  transform: translate(calc(-50% + var(--dx, 0px)), -100%);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -877,7 +878,7 @@ kbd {
   animation: fade-up 0.12s ease-out;
 }
 .sel-toolbar.below {
-  transform: translate(-50%, 0);
+  transform: translate(calc(-50% + var(--dx, 0px)), 0);
 }
 @keyframes fade-up {
   from {
