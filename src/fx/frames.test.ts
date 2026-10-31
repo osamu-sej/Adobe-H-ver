@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TextFrame } from "../model/types";
-import { clampSize, drawFrame, FRAME_LINE, FRAME_PAD, FRAME_SIZES, frameLines, neededHeight, stepSize, textHeight, wrapText } from "./frames";
+import { clampSize, drawFrame, FRAME_DEFAULTS, FRAME_LINE, FRAME_PAD, FRAME_SIZES, frameLines, neededHeight, stepSize, textHeight, wrapText } from "./frames";
 
 /** 1文字を size の幅として数える（日本語の全角文字と同じ） */
 const wide = (size: number) => () => size;
@@ -71,6 +71,20 @@ describe("枠の高さ", () => {
     const f = { text: "あ".repeat(10), size: 10, bold: false, w: 100 };
     expect(neededHeight(f)).toBeCloseTo(textHeight(2, 10) + FRAME_PAD * 2);
     expect(neededHeight({ ...f, text: "あ" })).toBeCloseTo(10 * FRAME_LINE + FRAME_PAD * 2);
+  });
+});
+
+describe("新しい枠の初期値", () => {
+  it("白い塗り・オレンジの枠線・黒い12ptの文字（左揃え・太字なし）", () => {
+    expect(FRAME_DEFAULTS).toEqual({ size: 12, bold: false, color: "#000000", align: "left", fill: "#ffffff", line: "#e8492a" });
+    // 12pt の文字が1行入る高さ
+    expect(neededHeight({ ...FRAME_DEFAULTS, text: "", w: 160 })).toBeCloseTo(12 * FRAME_LINE + FRAME_PAD * 2);
+  });
+
+  it("初期値の文字の大きさは、文字サイズの段階の1つ（A＋・A−がそこから1つずつ動く）", () => {
+    expect(FRAME_SIZES).toContain(FRAME_DEFAULTS.size);
+    expect(stepSize(FRAME_DEFAULTS.size, 1)).toBe(14);
+    expect(stepSize(FRAME_DEFAULTS.size, -1)).toBe(11);
   });
 });
 
